@@ -24,7 +24,7 @@ func TestRevokeMarketplace_OnlyMarketplace(t *testing.T) {
 		Active: true, Reason: "RENEWAL", LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), newMockAuditRepo(), testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), newMockAuditRepo(), mockTxProvider{}, testLogger())
 
 	revoked, skipped, err := r.RevokeMarketplace(context.Background(), []string{"u_42"})
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestRevokeMarketplace_PartialMatch(t *testing.T) {
 		Active: true, Reason: "GRANTED", LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	revoked, skipped, err := r.RevokeMarketplace(context.Background(), []string{"u_42", "u_99"})
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestRevokeMarketplace_AlreadyInactive(t *testing.T) {
 		Active: false, Reason: "EXPIRED", LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	revoked, skipped, err := r.RevokeMarketplace(context.Background(), []string{"u_42"})
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func TestGetEntitlement_MultipleSources(t *testing.T) {
 		Active: true, Reason: "RENEWAL", LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	ent, err := r.GetEntitlement(context.Background(), "u_42")
 	require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestGetEntitlement_MultipleSources(t *testing.T) {
 
 func TestGetEntitlement_NotFound(t *testing.T) {
 	entRepo := newMockEntRepo()
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	ent, err := r.GetEntitlement(context.Background(), "u_unknown")
 	require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestGetEntitlement_NoneActive(t *testing.T) {
 		Active: false, Reason: "EXPIRATION", LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	ent, err := r.GetEntitlement(context.Background(), "u_42")
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestExpireOverdue(t *testing.T) {
 		Active: true, ExpiresAt: nil, LastChangedAt: now, CreatedAt: now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	count, err := r.ExpireOverdue(context.Background())
 	require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestRevokeMarketplace_GetError(t *testing.T) {
 	entRepo := newMockEntRepo()
 	entRepo.getByUserAndSourceErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, _, err := r.RevokeMarketplace(context.Background(), []string{"u_42"})
 	require.Error(t, err)
@@ -160,7 +160,7 @@ func TestRevokeMarketplace_UpdateActiveError(t *testing.T) {
 	}
 	entRepo.updateActiveErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, _, err := r.RevokeMarketplace(context.Background(), []string{"u_42"})
 	require.Error(t, err)
@@ -177,7 +177,7 @@ func TestRevokeMarketplace_AuditInsertError(t *testing.T) {
 	auditRepo := newMockAuditRepo()
 	auditRepo.insertErr = fmt.Errorf("audit down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), auditRepo, mockTxProvider{}, testLogger())
 
 	revoked, skipped, err := r.RevokeMarketplace(context.Background(), []string{"u_42"})
 	require.NoError(t, err, "audit error should not fail revoke")
@@ -189,7 +189,7 @@ func TestGetEntitlement_GetByUserError(t *testing.T) {
 	entRepo := newMockEntRepo()
 	entRepo.getByUserErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, err := r.GetEntitlement(context.Background(), "u_42")
 	require.Error(t, err)
@@ -200,7 +200,7 @@ func TestExpireOverdue_Error(t *testing.T) {
 	entRepo := newMockEntRepo()
 	entRepo.expireOverdueErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, err := r.ExpireOverdue(context.Background())
 	require.Error(t, err)

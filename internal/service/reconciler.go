@@ -12,11 +12,12 @@ import (
 )
 
 type Reconciler struct {
-	entRepo   port.EntitlementRepository
-	eventRepo port.StoreEventRepository
-	notifRepo port.NotificationRepository
-	auditRepo port.AuditLogRepository
-	logger    *slog.Logger
+	entRepo    port.EntitlementRepository
+	eventRepo  port.StoreEventRepository
+	notifRepo  port.NotificationRepository
+	auditRepo  port.AuditLogRepository
+	txProvider port.TransactionProvider
+	logger     *slog.Logger
 }
 
 func NewReconciler(
@@ -24,126 +25,141 @@ func NewReconciler(
 	eventRepo port.StoreEventRepository,
 	notifRepo port.NotificationRepository,
 	auditRepo port.AuditLogRepository,
+	txProvider port.TransactionProvider,
 	logger *slog.Logger,
 ) *Reconciler {
 	return &Reconciler{
-		entRepo:   entRepo,
-		eventRepo: eventRepo,
-		notifRepo: notifRepo,
-		auditRepo: auditRepo,
-		logger:    logger,
+		entRepo:    entRepo,
+		eventRepo:  eventRepo,
+		notifRepo:  notifRepo,
+		auditRepo:  auditRepo,
+		txProvider: txProvider,
+		logger:     logger,
 	}
 }
 
 func (r *Reconciler) ProcessStoreEvent(ctx context.Context, event domain.StoreEvent) (bool, error) {
-	inserted, err := r.eventRepo.Insert(ctx, event)
-	if err != nil {
-		return false, fmt.Errorf("insert store event: %w", err)
-	}
-	if !inserted {
-		r.logger.Info("duplicate event ignored",
-			slog.String("event_id", event.EventID),
-			slog.String("user_id", event.UserID),
-		)
-		return false, nil
-	}
-
-	existing, err := r.entRepo.GetByUserAndSource(ctx, event.UserID, domain.SourceStore)
-	if err != nil {
-		return false, fmt.Errorf("get entitlement: %w", err)
-	}
-
-	if existing != nil {
-		eventTime := time.UnixMilli(event.EventTimeMs)
-		if existing.LastChangedAt.After(eventTime) {
-			r.logger.Info("stale event ignored",
+	var processed bool
+	txErr := r.txProvider.WithinTx(ctx, func(txCtx context.Context) error {
+		inserted, err := r.eventRepo.Insert(txCtx, event)
+		if err != nil {
+			return fmt.Errorf("insert store event: %w", err)
+		}
+		if !inserted {
+			r.logger.Info("duplicate event ignored",
 				slog.String("event_id", event.EventID),
 				slog.String("user_id", event.UserID),
-				slog.Time("last_changed_at", existing.LastChangedAt),
-				slog.Time("event_time", eventTime),
 			)
-			return false, nil
+			return nil
 		}
-	}
 
-	var prevState string
-	if existing != nil {
-		prevState = entitlementJSON(existing)
-	}
-
-	newEntitlement, changed, err := domain.ApplyStoreEvent(existing, event, time.Now())
-	if err != nil {
-		return false, fmt.Errorf("apply store event: %w", err)
-	}
-
-	if err := r.entRepo.Upsert(ctx, *newEntitlement); err != nil {
-		return false, fmt.Errorf("upsert entitlement: %w", err)
-	}
-
-	if changed && newEntitlement.Active && newEntitlement.ExpiresAt != nil && event.Type != domain.EventBillingIssue {
-		notif := domain.ScheduleNotification(event.UserID, *newEntitlement.ExpiresAt, time.Now())
-		if _, err := r.notifRepo.Schedule(ctx, notif); err != nil {
-			r.logger.Error("failed to schedule notification",
-				slog.String("user_id", event.UserID),
-				slog.String("error", err.Error()),
-			)
-		}
-	}
-
-	if r.auditRepo != nil && changed {
-		nextState := entitlementJSON(newEntitlement)
-		entry := domain.AuditEntry{
-			UserID:        event.UserID,
-			TriggerID:     event.EventID,
-			Source:        domain.SourceStore,
-			PreviousState: prevState,
-			NextState:     nextState,
-			CreatedAt:     time.Now(),
-		}
-		if err := r.auditRepo.Insert(ctx, entry); err != nil {
-			r.logger.Error("failed to write audit entry",
-				slog.String("user_id", event.UserID),
-				slog.String("error", err.Error()),
-			)
-		}
-	}
-
-	return true, nil
-}
-
-func (r *Reconciler) RevokeMarketplace(ctx context.Context, userIDs []string) (revoked int, skipped int, err error) {
-	for _, userID := range userIDs {
-		ent, err := r.entRepo.GetByUserAndSource(ctx, userID, domain.SourceMarketplace)
+		existing, err := r.entRepo.GetByUserAndSource(txCtx, event.UserID, domain.SourceStore)
 		if err != nil {
-			return revoked, skipped, fmt.Errorf("get entitlement for %s: %w", userID, err)
-		}
-		if ent == nil || !ent.Active {
-			skipped++
-			continue
+			return fmt.Errorf("get entitlement: %w", err)
 		}
 
-		if err := r.entRepo.UpdateActive(ctx, userID, domain.SourceMarketplace, false, "MARKETPLACE_REVOKED"); err != nil {
-			return revoked, skipped, fmt.Errorf("revoke marketplace for %s: %w", userID, err)
-		}
-
-		if r.auditRepo != nil {
-			entry := domain.AuditEntry{
-				UserID:        userID,
-				TriggerID:     "marketplace_revoke",
-				Source:        domain.SourceMarketplace,
-				PreviousState: entitlementJSON(ent),
-				NextState:     `{"active":false,"source":"MARKETPLACE","reason":"MARKETPLACE_REVOKED"}`,
-				CreatedAt:     time.Now(),
+		if existing != nil {
+			if existing.LastEventTimeMs > event.EventTimeMs {
+				r.logger.Info("stale event ignored",
+					slog.String("event_id", event.EventID),
+					slog.String("user_id", event.UserID),
+					slog.Int64("last_event_time_ms", existing.LastEventTimeMs),
+					slog.Int64("event_time_ms", event.EventTimeMs),
+				)
+				return nil
 			}
-			if err := r.auditRepo.Insert(ctx, entry); err != nil {
-				r.logger.Error("failed to write audit entry",
-					slog.String("user_id", userID),
+		}
+
+		var prevState string
+		if existing != nil {
+			prevState = entitlementJSON(existing)
+		}
+
+		newEntitlement, changed, err := domain.ApplyStoreEvent(existing, event, time.Now())
+		if err != nil {
+			return fmt.Errorf("apply store event: %w", err)
+		}
+
+		if err := r.entRepo.Upsert(txCtx, *newEntitlement); err != nil {
+			return fmt.Errorf("upsert entitlement: %w", err)
+		}
+
+		if changed && newEntitlement.Active && newEntitlement.ExpiresAt != nil && event.Type != domain.EventBillingIssue {
+			notif := domain.ScheduleNotification(event.UserID, *newEntitlement.ExpiresAt, time.Now())
+			if _, err := r.notifRepo.Schedule(txCtx, notif); err != nil {
+				r.logger.Error("failed to schedule notification",
+					slog.String("user_id", event.UserID),
 					slog.String("error", err.Error()),
 				)
 			}
 		}
 
-		revoked++
+		if r.auditRepo != nil && changed {
+			nextState := entitlementJSON(newEntitlement)
+			entry := domain.AuditEntry{
+				UserID:        event.UserID,
+				TriggerID:     event.EventID,
+				Source:        domain.SourceStore,
+				PreviousState: prevState,
+				NextState:     nextState,
+				CreatedAt:     time.Now(),
+			}
+			if err := r.auditRepo.Insert(txCtx, entry); err != nil {
+				r.logger.Error("failed to write audit entry",
+					slog.String("user_id", event.UserID),
+					slog.String("error", err.Error()),
+				)
+			}
+		}
+
+		processed = true
+		return nil
+	})
+	if txErr != nil {
+		return false, txErr
+	}
+	return processed, nil
+}
+
+func (r *Reconciler) RevokeMarketplace(ctx context.Context, userIDs []string) (revoked int, skipped int, err error) {
+	txErr := r.txProvider.WithinTx(ctx, func(txCtx context.Context) error {
+		for _, userID := range userIDs {
+			ent, err := r.entRepo.GetByUserAndSource(txCtx, userID, domain.SourceMarketplace)
+			if err != nil {
+				return fmt.Errorf("get entitlement for %s: %w", userID, err)
+			}
+			if ent == nil || !ent.Active {
+				skipped++
+				continue
+			}
+
+			if err := r.entRepo.UpdateActive(txCtx, userID, domain.SourceMarketplace, false, "MARKETPLACE_REVOKED"); err != nil {
+				return fmt.Errorf("revoke marketplace for %s: %w", userID, err)
+			}
+
+			if r.auditRepo != nil {
+				entry := domain.AuditEntry{
+					UserID:        userID,
+					TriggerID:     "marketplace_revoke",
+					Source:        domain.SourceMarketplace,
+					PreviousState: entitlementJSON(ent),
+					NextState:     `{"active":false,"source":"MARKETPLACE","reason":"MARKETPLACE_REVOKED"}`,
+					CreatedAt:     time.Now(),
+				}
+				if err := r.auditRepo.Insert(txCtx, entry); err != nil {
+					r.logger.Error("failed to write audit entry",
+						slog.String("user_id", userID),
+						slog.String("error", err.Error()),
+					)
+				}
+			}
+
+			revoked++
+		}
+		return nil
+	})
+	if txErr != nil {
+		return revoked, skipped, txErr
 	}
 	return revoked, skipped, nil
 }

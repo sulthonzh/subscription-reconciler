@@ -200,6 +200,12 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
+type mockTxProvider struct{}
+
+func (mockTxProvider) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func baseEvent() domain.StoreEvent {
 	return domain.StoreEvent{
 		EventID:     "evt_001",
