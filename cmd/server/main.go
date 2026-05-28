@@ -57,10 +57,11 @@ func main() {
 	notifRepo := sqlite.NewNotificationRepo(db)
 	pollRepo := sqlite.NewCarrierPollLogRepo(db)
 	auditRepo := sqlite.NewAuditLogRepo(db)
+	txProvider := sqlite.NewTxProvider(db)
 
 	carrierClient := carrierhttp.NewClient(carrierURL)
 
-	reconciler := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, logger)
+	reconciler := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, txProvider, logger)
 	poller := service.NewPoller(entRepo, pollRepo, carrierClient, auditRepo, logger)
 	notifier := service.NewNotifier(notifRepo, logger)
 
@@ -141,6 +142,7 @@ CREATE TABLE IF NOT EXISTS entitlements (
     expires_at    TEXT,
     reason        TEXT,
     last_changed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_event_time_ms INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     PRIMARY KEY (user_id, source)
 );
@@ -185,6 +187,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	if _, err := db.Exec(schema); err != nil {
 		return fmt.Errorf("running schema: %w", err)
 	}
+
+	// Idempotent column additions for existing databases.
+	db.Exec("ALTER TABLE entitlements ADD COLUMN last_event_time_ms INTEGER NOT NULL DEFAULT 0")
 
 	logger.Info("migrations applied")
 	return nil
