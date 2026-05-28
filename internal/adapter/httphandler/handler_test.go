@@ -166,6 +166,12 @@ func (m *mockAuditRepo) GetByUser(_ context.Context, userID string) ([]domain.Au
 	return nil, nil
 }
 
+type mockTxProvider struct{}
+
+func (mockTxProvider) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func setupHandler() (*Handler, *mockEntRepo, *mockEventRepo) {
 	entRepo := newEntRepo()
 	eventRepo := newEventRepo()
@@ -173,7 +179,7 @@ func setupHandler() (*Handler, *mockEntRepo, *mockEventRepo) {
 	auditRepo := &mockAuditRepo{}
 	logger := testLogger()
 
-	r := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, logger)
+	r := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, logger)
 	h := New(r)
 	return h, entRepo, eventRepo
 }
@@ -366,7 +372,7 @@ func TestHandleStoreWebhook_InternalError(t *testing.T) {
 	eventRepo := newEventRepo()
 	eventRepo.insertErr = fmt.Errorf("db down")
 
-	r := service.NewReconciler(entRepo, eventRepo, newNotifRepo(), &mockAuditRepo{}, testLogger())
+	r := service.NewReconciler(entRepo, eventRepo, newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
 	h := New(r)
 
 	body := map[string]interface{}{
@@ -389,7 +395,7 @@ func TestHandleMarketplaceRevoke_InternalError(t *testing.T) {
 	entRepo := newEntRepo()
 	entRepo.getByUserAndSourceErr = fmt.Errorf("db down")
 
-	r := service.NewReconciler(entRepo, newEventRepo(), newNotifRepo(), &mockAuditRepo{}, testLogger())
+	r := service.NewReconciler(entRepo, newEventRepo(), newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
 	h := New(r)
 
 	body := map[string]interface{}{
@@ -415,7 +421,7 @@ func TestHandleGetEntitlement_InternalError(t *testing.T) {
 	entRepo := newEntRepo()
 	entRepo.getByUserErr = fmt.Errorf("db down")
 
-	r := service.NewReconciler(entRepo, newEventRepo(), newNotifRepo(), &mockAuditRepo{}, testLogger())
+	r := service.NewReconciler(entRepo, newEventRepo(), newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
 	h := New(r)
 
 	rr := executeRequest(h, http.MethodGet, "/users/u_42/entitlement", nil)
