@@ -10,10 +10,10 @@ import (
 )
 
 type mockEntitlementRepo struct {
-	entitlements map[string]*domain.Entitlement
-	upserted     []domain.Entitlement
-	updated      []updateCall
-
+	entitlements       map[string]*domain.Entitlement
+	upserted          []domain.Entitlement
+	updated           []updateCall
+	expireOverdueCount int
 	getByUserAndSourceErr error
 	getByUserErr          error
 	upsertErr             error
@@ -110,6 +110,7 @@ func (m *mockEntitlementRepo) ExpireOverdue(_ context.Context, now time.Time) (i
 			count++
 		}
 	}
+	m.expireOverdueCount = count
 	return count, nil
 }
 
