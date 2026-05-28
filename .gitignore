@@ -1,0 +1,23 @@
+# Binaries
+bin/
+*.exe
+
+# Database files
+*.db
+
+# Coverage
+*.out
+coverage*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Build artifacts
+*.db-journal
+*.db-wal
+*.db-shm
