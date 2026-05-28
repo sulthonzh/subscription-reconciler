@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -120,6 +121,17 @@ func (p *Poller) pollUser(ctx context.Context, userID string) {
 		)
 	}
 
+	var previousState string
+	if ent, err := p.entRepo.GetByUserAndSource(ctx, userID, domain.SourceCarrier); err == nil && ent != nil {
+		stateJSON, _ := json.Marshal(map[string]interface{}{
+			"active":  ent.Active,
+			"source": "CARRIER",
+		})
+		previousState = string(stateJSON)
+	} else {
+		previousState = "{}"
+	}
+
 	switch status {
 	case "inactive":
 		if err := p.entRepo.UpdateActive(ctx, userID, domain.SourceCarrier, false, "CARRIER_INACTIVE"); err != nil {
@@ -127,6 +139,21 @@ func (p *Poller) pollUser(ctx context.Context, userID string) {
 				slog.String("user_id", userID),
 				slog.String("error", err.Error()),
 			)
+		} else if p.auditRepo != nil {
+			entry := domain.AuditEntry{
+				UserID:        userID,
+				TriggerID:     "carrier_poll",
+				Source:        domain.SourceCarrier,
+				PreviousState: previousState,
+				NextState:     `{"active":false,"source":"CARRIER","reason":"CARRIER_INACTIVE"}`,
+				CreatedAt:     time.Now(),
+			}
+			if err := p.auditRepo.Insert(ctx, entry); err != nil {
+				p.logger.Error("failed to write audit entry",
+					slog.String("user_id", userID),
+					slog.String("error", err.Error()),
+				)
+			}
 		}
 	case "api_error":
 		p.logger.Warn("carrier api error, no state change",
