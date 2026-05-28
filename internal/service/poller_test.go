@@ -82,6 +82,8 @@ func (m *mockPollLogRepo) ReleaseLock(_ context.Context, userID string) error {
 	return nil
 }
 
+
+
 func TestPollAll_ActiveUser(t *testing.T) {
 	entRepo := newMockEntRepo()
 	now := time.Now()
@@ -113,14 +115,22 @@ func TestPollAll_InactiveUser(t *testing.T) {
 
 	carrier := &mockCarrierClient{status: "inactive"}
 	pollRepo := newMockPollLogRepo()
+	auditRepo := newMockAuditRepo()
 
-	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p := NewPoller(entRepo, pollRepo, carrier, auditRepo, testLogger())
 	p.PollAll(context.Background())
 
 	assert.Equal(t, 1, carrier.called)
 	assert.False(t, entRepo.entitlements["u_42:CARRIER"].Active,
 		"inactive response should deactivate")
 	assert.Equal(t, "CARRIER_INACTIVE", entRepo.entitlements["u_42:CARRIER"].Reason)
+	assert.Len(t, auditRepo.entries, 1, "should write audit entry on deactivation")
+	assert.Equal(t, "u_42", auditRepo.entries[0].UserID)
+	assert.Equal(t, "carrier_poll", auditRepo.entries[0].TriggerID)
+	assert.Equal(t, domain.SourceCarrier, auditRepo.entries[0].Source)
+	assert.Contains(t, auditRepo.entries[0].PreviousState, "\"active\":true")
+	assert.Contains(t, auditRepo.entries[0].NextState, "\"active\":false")
+	assert.Contains(t, auditRepo.entries[0].NextState, "\"reason\":\"CARRIER_INACTIVE\"")
 }
 
 func TestPollAll_ApiError(t *testing.T) {
