@@ -113,37 +113,79 @@ make clean          # Remove build artifacts and DB files
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph drivers["Driving Adapters (Inbound)"]
+        direction TB
+        MW["Middleware Stack<br/>RequestID → RealIP → RateLimiter<br/>BodySizeLimit → CORS → Logger → Recoverer"]
+        HTTP["HTTP Handler<br/><i>chi router</i>"]
+        MW --> HTTP
+    end
+
+    subgraph workers["Background Workers"]
+        direction LR
+        CP["Carrier Poller<br/><i>every 5m</i>"]
+        NS["Notification Scheduler<br/><i>every 5m</i>"]
+        NT["Notifier<br/><i>every 1m</i>"]
+        ES["Expiry Sweeper<br/><i>every 5m</i>"]
+    end
+
+    subgraph core["Application Core"]
+        direction TB
+        SVC["Reconciler Service<br/><i>use-case orchestration</i>"]
+        DOM["Domain Layer<br/><i>state machine · resolution<br/>product catalog · audit</i>"]
+        PORT["Port Interfaces<br/><i>repository contracts</i>"]
+        SVC --> DOM
+        SVC --> PORT
+    end
+
+    subgraph adapters["Driven Adapters (Outbound)"]
+        direction LR
+        SQLITE["SQLite Repository<br/><i>persistence</i>"]
+        CARRIER["Carrier HTTP Client<br/><i>external API</i>"]
+    end
+
+    HTTP --> |"POST /webhooks/store"| SVC
+    HTTP --> |"POST /webhooks/marketplace/revoke"| SVC
+    HTTP --> |"GET /users/:id/entitlement"| SVC
+    HTTP --> |"GET /users/:id/timeline"| SVC
+    HTTP --> |"GET /health"| OK["200 OK"]
+
+    CP --> |"poll status"| SVC
+    NS --> |"schedule warnings"| PORT
+    NT --> |"dispatch pending"| PORT
+    ES --> |"expire overdue"| PORT
+
+    SVC --> |"read/write"| SQLITE
+    CP --> |"GET /carrier/subscriptions/:id"| CARRIER
+    CARRIER -.-> |"carrier response"| SVC
+
+    SQLITE -.-> |"implements"| PORT
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      HTTP Handler                        │
-│  (chi router + middleware stack)                         │
-│                                                          │
-│  POST /webhooks/store          GET /health              │
-│  POST /webhooks/marketplace/revoke                      │
-│  GET  /users/{id}/entitlement                           │
-│  GET  /users/{id}/timeline                              │
-└────────────┬──────────────────────┬─────────────────────┘
-             │                      │
-             ▼                      ▼
-┌────────────────────┐   ┌──────────────────────┐
-│  Reconciler Service │   │  Carrier HTTP Client  │
-│  (business logic)   │   │  (external adapter)   │
-└────────┬───────────┘   └──────────────────────┘
-         │
-         ▼
-┌────────────────────┐   ┌──────────────────────┐
-│   Domain Layer      │   │  Background Workers   │
-│  Entitlement State  │   │  • Carrier Poller     │
-│  Event Processing   │   │  • Notifier           │
-│  Product Catalog    │   │  • Expiry Sweeper     │
-│  Audit Trail        │   │  • Notif Scheduler    │
-└────────┬───────────┘   └──────────────────────┘
-         │
-         ▼
-┌────────────────────┐
-│  SQLite Repository  │
-│  (persistence)      │
-└────────────────────┘
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant MW as Middleware
+    participant H as HTTP Handler
+    participant S as Reconciler Service
+    participant D as Domain Layer
+    participant R as SQLite Repository
+
+    C->>MW: HTTP Request
+    MW->>MW: RequestID → RealIP → RateLimiter
+    MW->>MW: BodySizeLimit → CORS → Logger → Recoverer
+    MW->>H: Forward request
+    H->>H: Validate & parse payload
+    H->>S: Call use-case method
+    S->>D: ApplyStoreEvent / ResolveEntitlements
+    D-->>S: Updated entitlement state
+    S->>R: Persist changes
+    R-->>S: Confirmation
+    S-->>H: Result
+    H-->>C: JSON response
 ```
 
 ### Hexagonal (Ports & Adapters)
@@ -386,38 +428,53 @@ type Entitlement struct {
 
 When resolving a user's overall premium status:
 
-```
-STORE > MARKETPLACE > CARRIER
+```mermaid
+flowchart LR
+    subgraph sources["Sources (priority order)"]
+        direction LR
+        S1["🥇 STORE"]
+        S2["🥈 MARKETPLACE"]
+        S3["🥉 CARRIER"]
+    end
+
+    S1 --> |"active?"| RESOLVED["✅ Resolved"]
+    S1 --> |"inactive"| S2
+    S2 --> |"active?"| RESOLVED
+    S2 --> |"inactive"| S3
+    S3 --> |"active?"| RESOLVED
+    S3 --> |"inactive"| NONE["❌ No premium"]
 ```
 
 The system checks each source in priority order. The first active entitlement found becomes the resolved entitlement. If no source is active, the user has no premium access.
 
 ### State Machine
 
-Each entitlement row follows a strict state machine:
+Each entitlement row follows a state machine governed by the `Active` boolean:
 
+```mermaid
+stateDiagram-v2
+    direction TB
+
+    [*] --> INACTIVE : Default state
+
+    INACTIVE --> ACTIVE : INITIAL_PURCHASE
+    ACTIVE --> ACTIVE : RENEWAL\n(extends expires_at)
+    ACTIVE --> INACTIVE : EXPIRATION
+    ACTIVE --> ACTIVE : CANCELLATION\n(updates reason only,\naccess until expires_at)
+    ACTIVE --> ACTIVE : UN_CANCELLATION\n(reactivates + new expires_at)
+    ACTIVE --> ACTIVE : BILLING_ISSUE\n(informational only,\nno state change)
 ```
-                    INITIAL_PURCHASE
-         ┌──────────────────────────────┐
-         │                              ▼
-    ┌─────────┐  RENEWAL    ┌──────────────┐
-    │ INACTIVE │◄────────────│   ACTIVE     │
-    └─────────┘             └──────────────┘
-         ▲                   │          │
-         │         CANCELLATION    UN_CANCELLATION
-         │                   │          │
-         │                   ▼          │
-         │            ┌───────────┐     │
-         └────────────│ CANCELLED │◄────┘
-         │            └───────────┘
-         │                   │
-         │          UN_CANCELLATION
-         │                   │
-         │                   ▼
-         │            ┌──────────────┐
-         └────────────│   ACTIVE     │
-                      └──────────────┘
-```
+
+**Event effects in detail:**
+
+| Event | Active After | Expires At | Notes |
+|-------|:----------:|:----------:|-------|
+| `INITIAL_PURCHASE` | ✅ | Set to product duration | Creates new entitlement if none exists |
+| `RENEWAL` | ✅ | Extended by product duration | Extends from event time, not current expiry |
+| `CANCELLATION` | ✅ | Unchanged | Reason updated; access continues until `expires_at` |
+| `UN_CANCELLATION` | ✅ | Set to new product duration | Re-activates a cancelled or expired entitlement |
+| `BILLING_ISSUE` | Unchanged | Unchanged | Informational; reason updated, no `LastChangedAt` update |
+| `EXPIRATION` | ❌ | Unchanged | Deactivates the entitlement row |
 
 ### Products
 
@@ -535,6 +592,32 @@ CREATE TABLE IF NOT EXISTS entitlements (
 
 Four background goroutines run alongside the HTTP server:
 
+```mermaid
+flowchart TB
+    subgraph workers["Background Workers"]
+        direction TB
+        CP["Carrier Poller<br/><b>every 5m</b>"]
+        NS["Notification Scheduler<br/><b>every 5m</b>"]
+        NT["Notifier<br/><b>every 1m</b>"]
+        ES["Expiry Sweeper<br/><b>every 5m</b>"]
+    end
+
+    DB[("SQLite Database")]
+
+    CP --> |"GET /carrier/subscriptions/:id"| CARRIER["Carrier API"]
+    CARRIER --> |"status response"| CP
+    CP --> |"upsert entitlement"| DB
+
+    NS --> |"find expiring within 24h"| DB
+    NS --> |"insert EXPIRY_WARNING"| DB
+
+    NT --> |"find pending & due"| DB
+    NT --> |"mark sent"| DB
+
+    ES --> |"find active & expired"| DB
+    ES --> |"set active=false"| DB
+```
+
 ### 1. Carrier Poller (5-minute interval)
 
 Polls the carrier API for all known carrier-entitled users. Updates entitlement state based on carrier response.
@@ -592,8 +675,19 @@ All workers start in `cmd/server/main.go` via goroutines with context-based canc
 
 Applied in order (outermost first):
 
-```
-Request → RequestID → RealIP → RateLimiter → BodySizeLimit → CORS → RequestLogger → Recoverer → Handler
+```mermaid
+flowchart LR
+    REQ["Incoming<br/>Request"] --> RID["RequestID"]
+    RID --> RIP["RealIP"]
+    RIP --> RL["RateLimiter<br/><i>10 req/s per IP</i>"]
+    RL --> BSL["BodySizeLimit<br/><i>≤ 1 MB</i>"]
+    BSL --> CORS["CORS"]
+    CORS --> LOG["RequestLogger"]
+    LOG --> REC["Recoverer"]
+    REC --> HANDLER["Handler"]
+
+    RL --> |"429 Too Many Requests"| REJECT["❌ Rejected"]
+    BSL --> |"413 Payload Too Large"| REJECT
 ```
 
 | Middleware | Package | Description |
