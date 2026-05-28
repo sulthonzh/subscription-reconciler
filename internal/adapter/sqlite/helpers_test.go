@@ -57,10 +57,17 @@ func TestFormatTimeNow(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestSkipTime_Scan(t *testing.T) {
+func TestDerefTime_Nil(t *testing.T) {
 	t.Parallel()
 
-	var s skipTime
-	assert.NoError(t, s.Scan("anything"))
-	assert.NoError(t, s.Scan(nil))
+	result := derefTime(nil)
+	assert.True(t, result.IsZero())
+}
+
+func TestDerefTime_NonNil(t *testing.T) {
+	t.Parallel()
+
+	ts := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
+	result := derefTime(&ts)
+	assert.WithinDuration(t, ts, result, time.Microsecond)
 }
