@@ -18,7 +18,7 @@ func TestProcessStoreEvent_NewEvent(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	auditRepo := newMockAuditRepo()
 
-	r := NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	processed, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestProcessStoreEvent_DuplicateEvent(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	auditRepo := newMockAuditRepo()
 
-	r := NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := baseEvent()
 	_, _ = r.ProcessStoreEvent(context.Background(), event)
@@ -63,16 +63,17 @@ func TestProcessStoreEvent_StaleEvent(t *testing.T) {
 	now := time.Now()
 	expiresAt := now.Add(30 * 24 * time.Hour)
 	entRepo.entitlements["u_42:STORE"] = &domain.Entitlement{
-		UserID:        "u_42",
-		Source:        domain.SourceStore,
-		Active:        true,
-		ExpiresAt:     &expiresAt,
-		Reason:        "RENEWAL",
-		LastChangedAt: now,
-		CreatedAt:     now,
+		UserID:          "u_42",
+		Source:          domain.SourceStore,
+		Active:          true,
+		ExpiresAt:       &expiresAt,
+		Reason:          "RENEWAL",
+		LastChangedAt:   now,
+		LastEventTimeMs: now.UnixMilli(),
+		CreatedAt:       now,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
 		EventID:     "evt_stale",
@@ -97,16 +98,17 @@ func TestProcessStoreEvent_LateArrival(t *testing.T) {
 	pastTime := now.Add(-2 * time.Hour)
 	expiresAt := pastTime.Add(30 * 24 * time.Hour)
 	entRepo.entitlements["u_42:STORE"] = &domain.Entitlement{
-		UserID:        "u_42",
-		Source:        domain.SourceStore,
-		Active:        true,
-		ExpiresAt:     &expiresAt,
-		Reason:        "INITIAL_PURCHASE",
-		LastChangedAt: pastTime,
-		CreatedAt:     pastTime,
+		UserID:          "u_42",
+		Source:          domain.SourceStore,
+		Active:          true,
+		ExpiresAt:       &expiresAt,
+		Reason:          "INITIAL_PURCHASE",
+		LastChangedAt:   pastTime,
+		LastEventTimeMs: pastTime.UnixMilli(),
+		CreatedAt:       pastTime,
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
 		EventID:     "evt_late",
@@ -131,16 +133,17 @@ func TestProcessStoreEvent_Cancellation(t *testing.T) {
 	now := time.Now()
 	expiresAt := now.Add(30 * 24 * time.Hour)
 	entRepo.entitlements["u_42:STORE"] = &domain.Entitlement{
-		UserID:        "u_42",
-		Source:        domain.SourceStore,
-		Active:        true,
-		ExpiresAt:     &expiresAt,
-		Reason:        "INITIAL_PURCHASE",
-		LastChangedAt: now.Add(-1 * time.Hour),
-		CreatedAt:     now.Add(-24 * time.Hour),
+		UserID:          "u_42",
+		Source:          domain.SourceStore,
+		Active:          true,
+		ExpiresAt:       &expiresAt,
+		Reason:          "INITIAL_PURCHASE",
+		LastChangedAt:   now.Add(-1 * time.Hour),
+		LastEventTimeMs: now.Add(-1 * time.Hour).UnixMilli(),
+		CreatedAt:       now.Add(-24 * time.Hour),
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
 		EventID:     "evt_cancel",
@@ -165,16 +168,17 @@ func TestProcessStoreEvent_Expiration(t *testing.T) {
 	now := time.Now()
 	expiresAt := now.Add(-1 * time.Hour)
 	entRepo.entitlements["u_42:STORE"] = &domain.Entitlement{
-		UserID:        "u_42",
-		Source:        domain.SourceStore,
-		Active:        true,
-		ExpiresAt:     &expiresAt,
-		Reason:        "INITIAL_PURCHASE",
-		LastChangedAt: now.Add(-2 * time.Hour),
-		CreatedAt:     now.Add(-24 * time.Hour),
+		UserID:          "u_42",
+		Source:          domain.SourceStore,
+		Active:          true,
+		ExpiresAt:       &expiresAt,
+		Reason:          "INITIAL_PURCHASE",
+		LastChangedAt:   now.Add(-2 * time.Hour),
+		LastEventTimeMs: now.Add(-2 * time.Hour).UnixMilli(),
+		CreatedAt:       now.Add(-24 * time.Hour),
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
 		EventID:     "evt_expire",
@@ -199,16 +203,17 @@ func TestProcessStoreEvent_BillingIssue_NoNotification(t *testing.T) {
 	now := time.Now()
 	expiresAt := now.Add(30 * 24 * time.Hour)
 	entRepo.entitlements["u_42:STORE"] = &domain.Entitlement{
-		UserID:        "u_42",
-		Source:        domain.SourceStore,
-		Active:        true,
-		ExpiresAt:     &expiresAt,
-		Reason:        "RENEWAL",
-		LastChangedAt: now.Add(-1 * time.Hour),
-		CreatedAt:     now.Add(-24 * time.Hour),
+		UserID:          "u_42",
+		Source:          domain.SourceStore,
+		Active:          true,
+		ExpiresAt:       &expiresAt,
+		Reason:          "RENEWAL",
+		LastChangedAt:   now.Add(-1 * time.Hour),
+		LastEventTimeMs: now.Add(-1 * time.Hour).UnixMilli(),
+		CreatedAt:       now.Add(-24 * time.Hour),
 	}
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
 		EventID:     "evt_billing",
@@ -228,7 +233,7 @@ func TestProcessStoreEvent_BillingIssue_NoNotification(t *testing.T) {
 
 func TestProcessStoreEvent_NilAuditRepo(t *testing.T) {
 	entRepo := newMockEntRepo()
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	processed, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.NoError(t, err)
@@ -239,7 +244,7 @@ func TestProcessStoreEvent_InsertError(t *testing.T) {
 	eventRepo := newMockEventRepo()
 	eventRepo.insertErr = fmt.Errorf("db down")
 
-	r := NewReconciler(newMockEntRepo(), eventRepo, newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(newMockEntRepo(), eventRepo, newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.Error(t, err)
@@ -250,7 +255,7 @@ func TestProcessStoreEvent_GetEntitlementError(t *testing.T) {
 	entRepo := newMockEntRepo()
 	entRepo.getByUserAndSourceErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.Error(t, err)
@@ -261,7 +266,7 @@ func TestProcessStoreEvent_UpsertError(t *testing.T) {
 	entRepo := newMockEntRepo()
 	entRepo.upsertErr = fmt.Errorf("db down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), nil, mockTxProvider{}, testLogger())
 
 	_, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.Error(t, err)
@@ -273,7 +278,7 @@ func TestProcessStoreEvent_ScheduleError(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	notifRepo.scheduleErr = fmt.Errorf("queue down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, nil, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, nil, mockTxProvider{}, testLogger())
 
 	processed, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.NoError(t, err)
@@ -285,7 +290,7 @@ func TestProcessStoreEvent_AuditInsertError(t *testing.T) {
 	auditRepo := newMockAuditRepo()
 	auditRepo.insertErr = fmt.Errorf("audit down")
 
-	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), auditRepo, testLogger())
+	r := NewReconciler(entRepo, newMockEventRepo(), newMockNotifRepo(), auditRepo, mockTxProvider{}, testLogger())
 
 	processed, err := r.ProcessStoreEvent(context.Background(), baseEvent())
 	require.NoError(t, err)
