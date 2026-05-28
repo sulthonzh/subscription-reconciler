@@ -26,13 +26,14 @@ const (
 )
 
 type Entitlement struct {
-	UserID        string
-	Source        Source
-	Active        bool
-	ExpiresAt     *time.Time
-	Reason        string
-	LastChangedAt time.Time
-	CreatedAt     time.Time
+	UserID          string
+	Source          Source
+	Active          bool
+	ExpiresAt       *time.Time
+	Reason          string
+	LastChangedAt   time.Time
+	LastEventTimeMs int64
+	CreatedAt       time.Time
 }
 
 type StoreEvent struct {
@@ -65,6 +66,8 @@ func ApplyStoreEvent(entitlement *Entitlement, event StoreEvent, now time.Time) 
 		}
 	}
 
+	entitlement.LastEventTimeMs = event.EventTimeMs
+
 	switch event.Type {
 	case EventInitialPurchase:
 		entitlement.Active = true
@@ -84,6 +87,7 @@ func ApplyStoreEvent(entitlement *Entitlement, event StoreEvent, now time.Time) 
 	case EventUnCancellation:
 		changed := !entitlement.Active
 		entitlement.Active = true
+		entitlement.ExpiresAt = &expiresAt
 		entitlement.Reason = reason
 		entitlement.LastChangedAt = now
 		return entitlement, changed, nil
@@ -96,10 +100,9 @@ func ApplyStoreEvent(entitlement *Entitlement, event StoreEvent, now time.Time) 
 		return entitlement, changed, nil
 
 	case EventBillingIssue:
-		// No state change. Informational only.
+		// No state change. Informational only. Do not update LastChangedAt.
 		changed := entitlement.Reason != reason
 		entitlement.Reason = reason
-		entitlement.LastChangedAt = now
 		return entitlement, changed, nil
 
 	case EventExpiration:

@@ -130,7 +130,7 @@ func TestApplyStoreEvent(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "BILLING_ISSUE no state change",
+			name: "BILLING_ISSUE no state change, preserves LastChangedAt",
 			entitlement: &Entitlement{
 				UserID:        "u_42",
 				Source:        SourceStore,
@@ -241,6 +241,7 @@ func TestApplyStoreEvent(t *testing.T) {
 			wantReason:  "UN_CANCELLATION",
 			wantChanged: true,
 			wantErr:     false,
+			wantExpiresAt: ptrTime(time.UnixMilli(1716700000000).Add(30 * 24 * time.Hour)),
 		},
 		{
 			name: "UN_CANCELLATION no change if already active",
@@ -281,6 +282,22 @@ func TestApplyStoreEvent(t *testing.T) {
 			wantErr:     true,
 		},
 		{
+			name: "UN_CANCELLATION creates new entitlement",
+			entitlement: nil,
+			event: StoreEvent{
+				EventID:     "evt_008",
+				UserID:      "u_42",
+				Type:        EventUnCancellation,
+				EventTimeMs: 1716700000000,
+				ProductID:   "premium_yearly",
+			},
+			wantActive:  true,
+			wantReason:  "UN_CANCELLATION",
+			wantChanged: true,
+			wantErr:     false,
+			wantExpiresAt: ptrTime(time.UnixMilli(1716700000000).Add(365 * 24 * time.Hour)),
+		},
+		{
 			name:        "unknown product returns error",
 			entitlement: nil,
 			event: StoreEvent{
@@ -313,7 +330,22 @@ func TestApplyStoreEvent(t *testing.T) {
 			assert.Equal(t, tt.wantChanged, changed)
 			assert.Equal(t, tt.event.UserID, result.UserID)
 			assert.Equal(t, SourceStore, result.Source)
-			assert.Equal(t, fixedNow, result.LastChangedAt)
+			assert.Equal(t, tt.event.EventTimeMs, result.LastEventTimeMs, "LastEventTimeMs should match event EventTimeMs")
+			
+			if tt.wantExpiresAt != nil {
+				require.NotNil(t, result.ExpiresAt, "ExpiresAt should not be nil for this test case")
+				assert.Equal(t, *tt.wantExpiresAt, *result.ExpiresAt, "ExpiresAt should be computed from product duration")
+			} else if tt.event.Type == EventInitialPurchase || tt.event.Type == EventRenewal || tt.event.Type == EventUnCancellation {
+				// These events should always set ExpiresAt
+				require.NotNil(t, result.ExpiresAt, "ExpiresAt should be set for %s events", tt.event.Type)
+			}
+
+			if tt.event.Type == EventBillingIssue && tt.entitlement != nil {
+				assert.Equal(t, tt.entitlement.LastChangedAt, result.LastChangedAt,
+					"BILLING_ISSUE should not change LastChangedAt")
+			} else {
+				assert.Equal(t, fixedNow, result.LastChangedAt)
+			}
 		})
 	}
 }
