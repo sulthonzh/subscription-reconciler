@@ -70,6 +70,9 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(mw.RequestID)
 	r.Use(mw.RealIP)
+	r.Use(appMiddleware.RateLimiter())
+	r.Use(appMiddleware.BodySizeLimit)
+	r.Use(appMiddleware.CORS)
 	r.Use(appMiddleware.RequestLogger(logger))
 	r.Use(mw.Recoverer)
 
