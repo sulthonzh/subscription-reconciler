@@ -29,12 +29,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 func makeEntitlement(userID string, source domain.Source, active bool) domain.Entitlement {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return domain.Entitlement{
-		UserID:        userID,
-		Source:        source,
-		Active:        active,
-		Reason:        "INITIAL_PURCHASE",
-		LastChangedAt: now,
-		CreatedAt:     now,
+		UserID:          userID,
+		Source:          source,
+		Active:          active,
+		Reason:          "INITIAL_PURCHASE",
+		LastChangedAt:   now,
+		LastEventTimeMs: now.UnixMilli(),
+		CreatedAt:       now,
 	}
 }
 
@@ -254,4 +255,54 @@ func TestExpireOverdue_NoExpired(t *testing.T) {
 	count, err := repo.ExpireOverdue(ctx, time.Now().UTC())
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
+}
+
+func TestUpsert_TimestampsPreserved(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewEntitlementRepo(db)
+	ctx := context.Background()
+
+	ent := makeEntitlement("u1", domain.SourceStore, true)
+	require.NoError(t, repo.Upsert(ctx, ent))
+
+	got, err := repo.GetByUserAndSource(ctx, "u1", domain.SourceStore)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.False(t, got.LastChangedAt.IsZero(), "LastChangedAt should not be zero after DB round-trip")
+	assert.False(t, got.CreatedAt.IsZero(), "CreatedAt should not be zero after DB round-trip")
+	assert.WithinDuration(t, ent.LastChangedAt, got.LastChangedAt, time.Second)
+	assert.WithinDuration(t, ent.CreatedAt, got.CreatedAt, time.Second)
+}
+
+func TestGetByUser_TimestampsPreserved(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewEntitlementRepo(db)
+	ctx := context.Background()
+
+	ent := makeEntitlement("u1", domain.SourceStore, true)
+	require.NoError(t, repo.Upsert(ctx, ent))
+
+	rows, err := repo.GetByUser(ctx, "u1")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.False(t, rows[0].LastChangedAt.IsZero(), "LastChangedAt should not be zero in multi-row scan")
+	assert.False(t, rows[0].CreatedAt.IsZero(), "CreatedAt should not be zero in multi-row scan")
+}
+
+func TestGetActiveBySource_TimestampsPreserved(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewEntitlementRepo(db)
+	ctx := context.Background()
+
+	ent := makeEntitlement("u1", domain.SourceStore, true)
+	require.NoError(t, repo.Upsert(ctx, ent))
+
+	rows, err := repo.GetActiveBySource(ctx, domain.SourceStore)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.False(t, rows[0].LastChangedAt.IsZero(), "LastChangedAt should not be zero in GetActiveBySource")
+	assert.False(t, rows[0].CreatedAt.IsZero(), "CreatedAt should not be zero in GetActiveBySource")
 }

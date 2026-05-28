@@ -20,7 +20,7 @@ func (r *AuditLogRepo) Insert(ctx context.Context, entry domain.AuditEntry) erro
 		INSERT INTO audit_log (user_id, trigger_id, source, previous_state, next_state, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`
 
-	_, err := r.db.ExecContext(ctx, q,
+	_, err := getDB(ctx, r.db).ExecContext(ctx, q,
 		entry.UserID,
 		entry.TriggerID,
 		string(entry.Source),
@@ -38,7 +38,7 @@ func (r *AuditLogRepo) GetByUser(ctx context.Context, userID string) ([]domain.A
 		WHERE user_id = ?
 		ORDER BY created_at ASC`
 
-	rows, err := r.db.QueryContext(ctx, q, userID)
+	rows, err := getDB(ctx, r.db).QueryContext(ctx, q, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,14 +49,16 @@ func (r *AuditLogRepo) GetByUser(ctx context.Context, userID string) ([]domain.A
 		var e domain.AuditEntry
 		var sourceStr string
 		var triggerID sql.NullString
+		var createdAt sql.NullString
 		if err := rows.Scan(
 			&e.ID, &e.UserID, &triggerID, &sourceStr,
-			&e.PreviousState, &e.NextState, &skipTime{},
+			&e.PreviousState, &e.NextState, &createdAt,
 		); err != nil {
 			return nil, err
 		}
 		e.TriggerID = triggerID.String
 		e.Source = domain.Source(sourceStr)
+		e.CreatedAt = derefTime(scanTime(createdAt))
 		result = append(result, e)
 	}
 	return result, rows.Err()

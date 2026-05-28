@@ -19,13 +19,13 @@ func (r *CarrierPollLogRepo) Insert(ctx context.Context, userID string, status s
 		INSERT INTO carrier_poll_log (user_id, status, polled_at, locked_until)
 		VALUES (?, ?, ?, NULL)`
 
-	_, err := r.db.ExecContext(ctx, q, userID, status, formatTime(time.Now()))
+	_, err := getDB(ctx, r.db).ExecContext(ctx, q, userID, status, formatTime(time.Now()))
 	return err
 }
 
 func (r *CarrierPollLogRepo) AcquireLock(ctx context.Context, userID string, lockedUntil time.Time) (bool, error) {
 	var lockCount int
-	err := r.db.QueryRowContext(ctx,
+	err := getDB(ctx, r.db).QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM carrier_poll_log WHERE user_id = ? AND locked_until > ?",
 		userID, formatTime(time.Now()),
 	).Scan(&lockCount)
@@ -36,7 +36,7 @@ func (r *CarrierPollLogRepo) AcquireLock(ctx context.Context, userID string, loc
 		return false, nil
 	}
 
-	_, err = r.db.ExecContext(ctx,
+	_, err = getDB(ctx, r.db).ExecContext(ctx,
 		"INSERT INTO carrier_poll_log (user_id, status, polled_at, locked_until) VALUES (?, 'LOCKED', ?, ?)",
 		userID, formatTime(time.Now()), formatTime(lockedUntil),
 	)
@@ -54,6 +54,6 @@ func (r *CarrierPollLogRepo) ReleaseLock(ctx context.Context, userID string) err
 			SELECT MAX(id) FROM carrier_poll_log WHERE user_id = ?
 		)`
 
-	_, err := r.db.ExecContext(ctx, q, userID, userID)
+	_, err := getDB(ctx, r.db).ExecContext(ctx, q, userID, userID)
 	return err
 }
