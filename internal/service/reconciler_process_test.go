@@ -296,3 +296,42 @@ func TestProcessStoreEvent_AuditInsertError(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, processed, "audit error should not fail the event")
 }
+
+func TestProcessStoreEvent_OutOfOrderEvents(t *testing.T) {
+	entRepo := newMockEntRepo()
+	notifRepo := newMockNotifRepo()
+	auditRepo := newMockAuditRepo()
+
+	now := time.Now()
+	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
+
+	// Event 2 arrives first (newer) - RENEWAL
+	renewalEvent := domain.StoreEvent{
+		EventID:     "evt_renewal",
+		UserID:      "u_42",
+		Type:        domain.EventRenewal,
+		EventTimeMs: now.UnixMilli(),
+		ProductID:   "premium_monthly",
+	}
+	processed, err := r.ProcessStoreEvent(context.Background(), renewalEvent)
+	require.NoError(t, err)
+	assert.True(t, processed)
+	assert.Equal(t, "RENEWAL", entRepo.upserted[0].Reason)
+
+	// Event 1 arrives later (older) - INITIAL_PURCHASE
+	purchaseEvent := domain.StoreEvent{
+		EventID:     "evt_purchase",
+		UserID:      "u_42",
+		Type:        domain.EventInitialPurchase,
+		EventTimeMs: now.Add(-2 * time.Hour).UnixMilli(),
+		ProductID:   "premium_monthly",
+	}
+	processed, err = r.ProcessStoreEvent(context.Background(), purchaseEvent)
+	require.NoError(t, err)
+	assert.False(t, processed, "older event should be ignored as stale")
+
+	// Verify entitlement still reflects RENEWAL, not INITIAL_PURCHASE
+	assert.Len(t, entRepo.upserted, 1)
+	assert.Equal(t, "RENEWAL", entRepo.upserted[0].Reason)
+	assert.True(t, entRepo.upserted[0].Active)
+}

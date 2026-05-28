@@ -174,6 +174,10 @@ func (r *Reconciler) GetEntitlement(ctx context.Context, userID string) (*domain
 	return &resolved, nil
 }
 
+func (r *Reconciler) GetTimeline(ctx context.Context, userID string) ([]domain.AuditEntry, error) {
+	return r.auditRepo.GetByUser(ctx, userID)
+}
+
 func (r *Reconciler) ExpireOverdue(ctx context.Context) (int, error) {
 	return r.entRepo.ExpireOverdue(ctx, time.Now())
 }
