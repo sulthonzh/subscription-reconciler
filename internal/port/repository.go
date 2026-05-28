@@ -2,10 +2,21 @@ package port
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
+
+type DBTX interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+}
+
+type TransactionProvider interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
 
 type EntitlementRepository interface {
 	GetByUserAndSource(ctx context.Context, userID string, source domain.Source) (*domain.Entitlement, error)
