@@ -23,6 +23,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/webhooks/store", h.HandleStoreWebhook)
 	r.Post("/webhooks/marketplace/revoke", h.HandleMarketplaceRevoke)
 	r.Get("/users/{id}/entitlement", h.HandleGetEntitlement)
+	r.Get("/users/{id}/timeline", h.HandleGetTimeline)
 
 	return r
 }
@@ -138,6 +139,45 @@ func (h *Handler) HandleGetEntitlement(w http.ResponseWriter, r *http.Request) {
 	}
 	if ent.Reason != "" {
 		resp.Reason = &ent.Reason
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+type timelineEntry struct {
+	TriggerID     string `json:"triggerId"`
+	Source        string `json:"source"`
+	PreviousState string `json:"previousState"`
+	NextState     string `json:"nextState"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+func (h *Handler) HandleGetTimeline(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user id required"})
+		return
+	}
+
+	entries, err := h.reconciler.GetTimeline(r.Context(), userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	if entries == nil {
+		entries = []domain.AuditEntry{}
+	}
+
+	resp := make([]timelineEntry, len(entries))
+	for i, e := range entries {
+		resp[i] = timelineEntry{
+			TriggerID:     e.TriggerID,
+			Source:        string(e.Source),
+			PreviousState: e.PreviousState,
+			NextState:     e.NextState,
+			CreatedAt:     e.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)

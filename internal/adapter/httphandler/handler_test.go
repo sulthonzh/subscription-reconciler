@@ -115,6 +115,16 @@ func (m *mockEntRepo) ExpireOverdue(_ context.Context, now time.Time) (int, erro
 	return count, nil
 }
 
+func (m *mockEntRepo) GetExpiringBefore(_ context.Context, before time.Time) ([]domain.Entitlement, error) {
+	var result []domain.Entitlement
+	for _, e := range m.entitlements {
+		if e.Active && e.ExpiresAt != nil && !e.ExpiresAt.After(before) {
+			result = append(result, *e)
+		}
+	}
+	return result, nil
+}
+
 type mockEventRepo struct {
 	events    map[string]bool
 	insertErr error
@@ -156,14 +166,31 @@ func (m *mockNotifRepo) MarkSent(_ context.Context, id int64, now time.Time) err
 	return nil
 }
 
-type mockAuditRepo struct{}
+type mockAuditRepo struct {
+	entries    []domain.AuditEntry
+	returnData []domain.AuditEntry
+	insertErr  error
+}
 
 func (m *mockAuditRepo) Insert(_ context.Context, entry domain.AuditEntry) error {
+	if m.insertErr != nil {
+		return m.insertErr
+	}
+	m.entries = append(m.entries, entry)
 	return nil
 }
 
 func (m *mockAuditRepo) GetByUser(_ context.Context, userID string) ([]domain.AuditEntry, error) {
-	return nil, nil
+	if m.returnData != nil {
+		return m.returnData, nil
+	}
+	var result []domain.AuditEntry
+	for _, e := range m.entries {
+		if e.UserID == userID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
 }
 
 type mockTxProvider struct{}
@@ -201,6 +228,7 @@ func executeRequest(h *Handler, method, path string, body interface{}) *httptest
 	r.Post("/webhooks/store", h.HandleStoreWebhook)
 	r.Post("/webhooks/marketplace/revoke", h.HandleMarketplaceRevoke)
 	r.Get("/users/{id}/entitlement", h.HandleGetEntitlement)
+	r.Get("/users/{id}/timeline", h.HandleGetTimeline)
 
 	rr := httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
@@ -449,4 +477,39 @@ func TestHandleGetEntitlement_WithLastChangedAt(t *testing.T) {
 	assert.True(t, resp.Active)
 	assert.NotNil(t, resp.LastChangedAt)
 	assert.Nil(t, resp.Reason, "empty reason should not be included")
+}
+
+func TestHandleGetTimeline_ReturnsEntries(t *testing.T) {
+	entRepo := newEntRepo()
+	eventRepo := newEventRepo()
+	notifRepo := newNotifRepo()
+	auditRepo := &mockAuditRepo{}
+	now := time.Now()
+	auditRepo.returnData = []domain.AuditEntry{
+		{ID: 1, UserID: "u_42", TriggerID: "evt_001", Source: domain.SourceStore, PreviousState: "{}", NextState: `{"active":true}`, CreatedAt: now},
+		{ID: 2, UserID: "u_42", TriggerID: "evt_002", Source: domain.SourceStore, PreviousState: `{"active":true}`, NextState: `{"active":false}`, CreatedAt: now.Add(1 * time.Hour)},
+	}
+
+	r := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, testLogger())
+	h := New(r)
+
+	rr := executeRequest(h, http.MethodGet, "/users/u_42/timeline", nil)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp []map[string]interface{}
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Len(t, resp, 2)
+	assert.Equal(t, "evt_001", resp[0]["triggerId"])
+	assert.Equal(t, "STORE", resp[0]["source"])
+}
+
+func TestHandleGetTimeline_Empty(t *testing.T) {
+	h, _, _ := setupHandler()
+
+	rr := executeRequest(h, http.MethodGet, "/users/u_unknown/timeline", nil)
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	var resp []interface{}
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Empty(t, resp)
 }

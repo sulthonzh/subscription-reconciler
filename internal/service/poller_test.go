@@ -322,6 +322,55 @@ func TestPoller_Run_TickerFires(t *testing.T) {
 	assert.True(t, carrier.called >= 1, "ticker should fire and poll user")
 }
 
+func TestPollAll_ConcurrentWorkers_NoDoubleProcessing(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+
+	// Set up 3 carrier users
+	entRepo.entitlements["u_1:CARRIER"] = &domain.Entitlement{
+		UserID: "u_1", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+	entRepo.entitlements["u_2:CARRIER"] = &domain.Entitlement{
+		UserID: "u_2", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+	entRepo.entitlements["u_3:CARRIER"] = &domain.Entitlement{
+		UserID: "u_3", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active"}
+	pollRepo := newMockPollLogRepo()
+	pollRepo.releaseLockErr = fmt.Errorf("lock held")
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+
+	// Run 3 concurrent PollAll calls
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p.PollAll(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	// Due to locking, each user should be polled at most once
+	// pollRepo.inserts should have at most 3 entries (one per user)
+	assert.LessOrEqual(t, len(pollRepo.inserts), 3, "concurrent workers should not double-process users")
+
+	// Each user should appear at most once in inserts
+	userCounts := make(map[string]int)
+	for _, ins := range pollRepo.inserts {
+		userCounts[ins.userID]++
+	}
+	for user, count := range userCounts {
+		assert.Equal(t, 1, count, "user %s should be polled exactly once, got %d", user, count)
+	}
+}
+
 // Verify the Poller satisfies nothing extra - just a compile check
 var _ = func() {
 	var _ port.CarrierClient = (*mockCarrierClient)(nil)
