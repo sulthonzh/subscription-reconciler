@@ -63,7 +63,7 @@ func main() {
 
 	reconciler := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, txProvider, logger)
 	poller := service.NewPoller(entRepo, pollRepo, carrierClient, auditRepo, logger)
-	notifier := service.NewNotifier(notifRepo, logger)
+	notifier := service.NewNotifier(entRepo, notifRepo, logger)
 
 	handler := httphandler.New(reconciler)
 
@@ -107,6 +107,24 @@ func main() {
 					logger.Error("expiry sweeper error", slog.String("error", err.Error()))
 				} else if count > 0 {
 					logger.Info("expired overdue entitlements", slog.Int("count", count))
+				}
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				count, err := notifier.ScheduleForExpiring(ctx)
+				if err != nil {
+					logger.Error("proactive notification scheduler error", slog.String("error", err.Error()))
+				} else if count > 0 {
+					logger.Info("scheduled expiring notifications", slog.Int("count", count))
 				}
 			}
 		}

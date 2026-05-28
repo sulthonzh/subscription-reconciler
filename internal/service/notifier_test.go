@@ -20,7 +20,7 @@ func TestSendDue_MarksNotifications(t *testing.T) {
 		{ID: 2, UserID: "u_43", Type: domain.NotificationPremiumExpiresSoon, ScheduledFor: now},
 	}
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	count, err := n.SendDue(context.Background())
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestSendDue_MarksNotifications(t *testing.T) {
 func TestSendDue_NoDueNotifications(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	count, err := n.SendDue(context.Background())
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestSendDue_NoDueNotifications(t *testing.T) {
 
 func TestNotifier_Run_RespectsContext(t *testing.T) {
 	notifRepo := newMockNotifRepo()
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -58,7 +58,7 @@ func TestNotifier_Run_TickerFires(t *testing.T) {
 		{ID: 1, UserID: "u_42", Type: domain.NotificationPremiumExpiresSoon, ScheduledFor: now},
 	}
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -72,7 +72,7 @@ func TestSendDue_FindDueError(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	notifRepo.findDueErr = fmt.Errorf("db down")
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	_, err := n.SendDue(context.Background())
 	require.Error(t, err)
@@ -87,7 +87,7 @@ func TestSendDue_MarkSentError(t *testing.T) {
 	}
 	notifRepo.markSentErr = fmt.Errorf("mark fail")
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	count, err := n.SendDue(context.Background())
 	require.NoError(t, err, "MarkSent error should not fail SendDue")
@@ -98,7 +98,7 @@ func TestNotifier_Run_FindDueError(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	notifRepo.findDueErr = fmt.Errorf("db down")
 
-	n := NewNotifier(notifRepo, testLogger())
+	n := NewNotifier(nil, notifRepo, testLogger())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

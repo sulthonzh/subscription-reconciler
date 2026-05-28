@@ -25,6 +25,7 @@ type EntitlementRepository interface {
 	GetActiveBySource(ctx context.Context, source domain.Source) ([]domain.Entitlement, error)
 	UpdateActive(ctx context.Context, userID string, source domain.Source, active bool, reason string) error
 	ExpireOverdue(ctx context.Context, now time.Time) (int, error)
+	GetExpiringBefore(ctx context.Context, before time.Time) ([]domain.Entitlement, error)
 }
 
 type StoreEventRepository interface {

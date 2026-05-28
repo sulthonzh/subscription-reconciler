@@ -113,3 +113,13 @@ func (r *EntitlementRepo) ExpireOverdue(ctx context.Context, now time.Time) (int
 	n, _ := res.RowsAffected()
 	return int(n), nil
 }
+
+func (r *EntitlementRepo) GetExpiringBefore(ctx context.Context, before time.Time) ([]domain.Entitlement, error) {
+	q := `SELECT ` + entitlementColumns[1:] + ` FROM entitlements WHERE active = true AND expires_at IS NOT NULL AND expires_at <= ?`
+	rows, err := getDB(ctx, r.db).QueryContext(ctx, q, formatTime(before))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanEntitlements(rows)
+}

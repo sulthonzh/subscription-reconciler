@@ -113,6 +113,16 @@ func (m *mockEntitlementRepo) ExpireOverdue(_ context.Context, now time.Time) (i
 	return count, nil
 }
 
+func (m *mockEntitlementRepo) GetExpiringBefore(_ context.Context, before time.Time) ([]domain.Entitlement, error) {
+	var result []domain.Entitlement
+	for _, e := range m.entitlements {
+		if e.Active && e.ExpiresAt != nil && !e.ExpiresAt.After(before) {
+			result = append(result, *e)
+		}
+	}
+	return result, nil
+}
+
 type mockStoreEventRepo struct {
 	events    map[string]bool
 	insertErr error

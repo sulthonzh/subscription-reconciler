@@ -5,16 +5,19 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 	"github.com/sulthonzh/subscription-reconciler/internal/port"
 )
 
 type Notifier struct {
+	entRepo   port.EntitlementRepository
 	notifRepo port.NotificationRepository
 	logger    *slog.Logger
 }
 
-func NewNotifier(notifRepo port.NotificationRepository, logger *slog.Logger) *Notifier {
+func NewNotifier(entRepo port.EntitlementRepository, notifRepo port.NotificationRepository, logger *slog.Logger) *Notifier {
 	return &Notifier{
+		entRepo:   entRepo,
 		notifRepo: notifRepo,
 		logger:    logger,
 	}
@@ -60,4 +63,26 @@ func (n *Notifier) SendDue(ctx context.Context) (int, error) {
 	}
 
 	return len(due), nil
+}
+
+func (n *Notifier) ScheduleForExpiring(ctx context.Context) (int, error) {
+	now := time.Now()
+	threshold := now.Add(domain.NotificationLeadTime)
+	ents, err := n.entRepo.GetExpiringBefore(ctx, threshold)
+	if err != nil {
+		return 0, err
+	}
+	scheduled := 0
+	for _, ent := range ents {
+		notif := domain.ScheduleNotification(ent.UserID, *ent.ExpiresAt, now)
+		inserted, err := n.notifRepo.Schedule(ctx, notif)
+		if err != nil {
+			n.logger.Error("failed to schedule notification", slog.String("user_id", ent.UserID), slog.String("error", err.Error()))
+			continue
+		}
+		if inserted {
+			scheduled++
+		}
+	}
+	return scheduled, nil
 }
