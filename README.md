@@ -254,7 +254,7 @@ GET /users/{userId}/entitlement
 | Field | Type | Description |
 |-------|------|-------------|
 | `active` | `bool` | Whether the user has active premium access |
-| `source` | `string\|null` | Highest-priority active source (`STORE`, `MARKETPLACE`, `CARRIER`) |
+| `source` | `string` | Highest-priority active source (`STORE`, `MARKETPLACE`, `CARRIER`), or `NONE` if no entitlements |
 | `expiresAt` | `string\|null` | ISO 8601 timestamp when entitlement expires |
 | `lastChangedAt` | `string\|null` | ISO 8601 timestamp of last state change |
 | `reason` | `string\|null` | The event type that caused the current state |
@@ -263,7 +263,7 @@ GET /users/{userId}/entitlement
 ```json
 {
   "active": false,
-  "source": null,
+  "source": "NONE",
   "expiresAt": null,
   "lastChangedAt": null,
   "reason": null
@@ -648,12 +648,9 @@ Scans for entitlements that have passed their expiry time and deactivates them.
 
 ```
 Every 5 minutes:
-  → Query active entitlements where expires_at <= now
-  → For each expired entitlement:
-    → Set active = false
-    → Update last_changed_at
-    → Set reason = "EXPIRATION"
-    → Record audit entry (ACTIVE → INACTIVE)
+  → Bulk UPDATE active entitlements where expires_at < now
+  → Set active = false, reason = "EXPIRED", update last_changed_at
+  → Returns count of expired rows (no per-row audit entries)
 ```
 
 All workers start in `cmd/server/main.go` via goroutines with context-based cancellation for graceful shutdown.
@@ -682,7 +679,7 @@ flowchart LR
 | **RequestID** | chi | Generates unique `X-Request-Id` header for request tracing |
 | **RealIP** | chi | Resolves real client IP from `X-Forwarded-For` / `X-Real-Ip` headers |
 | **RateLimiter** | `middleware/` | Per-IP rate limiting (100 req/min). Uses `net.SplitHostPort` to extract IP from `RemoteAddr` |
-| **BodySizeLimit** | `middleware/` | Rejects requests with body > 1MB via `http.MaxBytesReader` |
+| **BodySizeLimit** | `middleware/` | Rejects requests with body > 1MB via `io.LimitReader` + `io.ReadAll` |
 | **CORS** | `middleware/` | Custom CORS — allows all origins, GET/POST/OPTIONS, Content-Type + Authorization headers |
 | **RequestLogger** | `middleware/` | Structured request logging via slog (method, path, status, duration) |
 | **Recoverer** | chi | Catches panics, returns 500 with stack trace in logs |
@@ -835,7 +832,9 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 
 ```
 .
-├── cmd/server/main.go              # Entry point, wiring, migrations
+├── cmd/
+│   ├── server/main.go              # Entry point, wiring, migrations
+│   └── mockcarrier/main.go         # Mock carrier API server
 ├── internal/
 │   ├── domain/
 │   │   ├── entitlement.go          # Entitlement entity, state machine, resolution
@@ -869,6 +868,12 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 │       ├── body_size.go            # Request body size limit (1MB)
 │       ├── cors.go                 # Custom CORS middleware
 │       └── logging.go              # Structured request logger
+├── tests/
+│   └── integration/
+│       └── integration_test.go     # Full-stack HTTP→SQLite tests
+├── migrations/
+│   ├── 001_create_tables.up.sql    # Schema creation
+│   └── 001_create_tables.down.sql  # Schema teardown
 ├── docs/
 │   ├── prd.md                      # Product requirements document
 │   └── plan.md                     # Implementation plan
