@@ -157,7 +157,7 @@ flowchart TB
     ES --> |"expire overdue"| PORT
 
     SVC --> |"read/write"| SQLITE
-    CP --> |"GET /carrier/subscriptions/:id"| CARRIER
+    CP --> |"GET /mock/carrier/plan"| CARRIER
     CARRIER -.-> |"carrier response"| SVC
 
     SQLITE -.-> |"implements"| PORT
@@ -197,10 +197,10 @@ The codebase follows a **ports-and-adapters** pattern:
 | Domain | `internal/domain/` | Business entities, state machine, entitlement resolution |
 | Ports | `internal/port/` | Interfaces defining contracts between layers |
 | Services | `internal/service/` | Use-case orchestration (reconciler) |
-| Adapters (driven) | `internal/adapter/sqliterepo/` | SQLite persistence implementation |
+| Adapters (driven) | `internal/adapter/sqlite/` | SQLite persistence implementation |
 | Adapters (driving) | `internal/adapter/httphandler/` | HTTP handler + router |
 | Adapters (external) | `internal/adapter/carrierhttp/` | Carrier API client |
-| Middleware | `internal/adapter/middleware/` | Rate limiting, body size, CORS, logging |
+| Middleware | `internal/middleware/` | Rate limiting, body size, CORS, logging |
 | Entry | `cmd/server/` | Server wiring, DB migrations, graceful shutdown |
 
 ### Design Decisions
@@ -343,14 +343,14 @@ POST /webhooks/store
 
 **Event Types:**
 
-| Type | Effect |
-|------|--------|
-| `INITIAL_PURCHASE` | Activates entitlement for product duration |
-| `RENEWAL` | Extends entitlement by product duration |
-| `CANCELLATION` | Revokes entitlement immediately |
-| `BILLING_ISSUE` | Marks billing problem, does not revoke |
-| `EXPIRATION` | Expires entitlement if not renewed |
-| `UN_CANCELLATION` | Re-activates cancelled entitlement |
+| Type | Active After | Effect |
+|------|:----------:|--------|
+| `INITIAL_PURCHASE` | ✅ | Creates and activates entitlement for product duration |
+| `RENEWAL` | ✅ | Extends entitlement by product duration from event time |
+| `CANCELLATION` | ✅ | Updates reason only; access continues until `expires_at` |
+| `BILLING_ISSUE` | — | Informational; no state change, reason updated |
+| `EXPIRATION` | ❌ | Deactivates the entitlement |
+| `UN_CANCELLATION` | ✅ | Re-activates with new product duration |
 
 **Response** `200`:
 ```json
@@ -412,13 +412,14 @@ The core entity representing a user's premium access from a single source.
 
 ```go
 type Entitlement struct {
-    UserID        string
-    Source        Source    // STORE, CARRIER, MARKETPLACE
-    Active        bool
-    ExpiresAt     *time.Time
-    LastEventTimeMs int64   // Timestamp from the source event
-    LastChangedAt *time.Time
-    Reason        *string   // Event type that caused current state
+    UserID          string
+    Source          Source    // STORE, CARRIER, MARKETPLACE
+    Active          bool
+    ExpiresAt       *time.Time
+    LastEventTimeMs int64     // Timestamp from the source event
+    LastChangedAt   time.Time
+    Reason          string    // Event type that caused current state
+    CreatedAt       time.Time
 }
 ```
 
@@ -465,17 +466,6 @@ stateDiagram-v2
     ACTIVE --> ACTIVE : BILLING_ISSUE\n(informational only,\nno state change)
 ```
 
-**Event effects in detail:**
-
-| Event | Active After | Expires At | Notes |
-|-------|:----------:|:----------:|-------|
-| `INITIAL_PURCHASE` | ✅ | Set to product duration | Creates new entitlement if none exists |
-| `RENEWAL` | ✅ | Extended by product duration | Extends from event time, not current expiry |
-| `CANCELLATION` | ✅ | Unchanged | Reason updated; access continues until `expires_at` |
-| `UN_CANCELLATION` | ✅ | Set to new product duration | Re-activates a cancelled or expired entitlement |
-| `BILLING_ISSUE` | Unchanged | Unchanged | Informational; reason updated, no `LastChangedAt` update |
-| `EXPIRATION` | ❌ | Unchanged | Deactivates the entitlement row |
-
 ### Products
 
 | Product ID | Duration | Description |
@@ -491,7 +481,7 @@ Every state transition is recorded:
 
 ```go
 type AuditEntry struct {
-    ID            string
+    ID            int64
     UserID        string
     TriggerID     string   // The eventId or "carrier_poll" or "marketplace_revoke"
     Source        Source
@@ -514,12 +504,10 @@ SQLite with pure-Go driver (`modernc.org/sqlite`). All timestamps stored as TEXT
 | `active` | `BOOLEAN` | Whether entitlement is currently active |
 | `expires_at` | `TEXT` | ISO 8601 expiry timestamp, nullable |
 | `last_event_time_ms` | `INTEGER` | Source event timestamp in ms (used for stale detection) |
-| `last_changed_at` | `TEXT` | ISO 8601 timestamp of last state change, nullable |
+| `last_changed_at` | `TEXT` | ISO 8601 timestamp of last state change |
 | `reason` | `TEXT` | Event type that caused current state, nullable |
 
 **Primary Key:** `(user_id, source)`
-
-**Indexes:** `idx_entitlements_active` on `(active)` for active entitlement lookups
 
 ### `store_events`
 
@@ -530,48 +518,44 @@ SQLite with pure-Go driver (`modernc.org/sqlite`). All timestamps stored as TEXT
 | `type` | `TEXT` | Event type |
 | `event_time_ms` | `INTEGER` | Event timestamp from source |
 | `product_id` | `TEXT` | Product identifier |
-| `received_at` | `TEXT` | ISO 8601 server receipt timestamp |
+| `processed_at` | `TEXT` | ISO 8601 server processing timestamp |
 
 **Primary Key:** `(event_id)`
-
-**Indexes:** `idx_store_events_user_time` on `(user_id, event_time_ms)` for replay queries
 
 ### `carrier_poll_log`
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | `TEXT` | Auto-generated UUID (PK) |
+| `id` | `INTEGER` | Auto-increment PK |
 | `user_id` | `TEXT` | User identifier |
-| `active` | `BOOLEAN` | Carrier's reported status |
-| `expires_at` | `TEXT` | ISO 8601 expiry, nullable |
+| `status` | `TEXT` | Carrier's reported status (`active`, `inactive`, `api_error`) |
+| `locked_until` | `TEXT` | ISO 8601 lock expiry for dedup, nullable |
 | `polled_at` | `TEXT` | ISO 8601 poll timestamp |
 
 ### `notifications`
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | `TEXT` | Auto-generated UUID (PK) |
+| `id` | `INTEGER` | Auto-increment PK |
 | `user_id` | `TEXT` | Target user |
-| `type` | `TEXT` | Notification type (e.g. `EXPIRY_WARNING`) |
-| `sent` | `BOOLEAN` | Whether notification was dispatched |
-| `scheduled_at` | `TEXT` | ISO 8601 scheduled send time |
+| `type` | `TEXT` | Notification type (default: `PREMIUM_EXPIRES_SOON`) |
+| `scheduled_for` | `TEXT` | ISO 8601 scheduled send time |
 | `sent_at` | `TEXT` | ISO 8601 actual send time, nullable |
+| `created_at` | `TEXT` | ISO 8601 creation timestamp |
 
-**Indexes:** `idx_notifications_pending` on `(sent)` where `sent = 0`
+**Unique Constraint:** `(user_id, type, scheduled_for)` — prevents duplicate scheduling
 
 ### `audit_log`
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | `TEXT` | Auto-generated UUID (PK) |
+| `id` | `INTEGER` | Auto-increment PK |
 | `user_id` | `TEXT` | User identifier |
 | `trigger_id` | `TEXT` | Source event or action identifier |
 | `source` | `TEXT` | Event source |
 | `previous_state` | `TEXT` | State before transition |
 | `next_state` | `TEXT` | State after transition |
 | `created_at` | `TEXT` | ISO 8601 transition timestamp |
-
-**Indexes:** `idx_audit_user` on `(user_id)` for timeline queries
 
 ### Migrations
 
@@ -604,7 +588,7 @@ flowchart TB
 
     DB[("SQLite Database")]
 
-    CP --> |"GET /carrier/subscriptions/:id"| CARRIER["Carrier API"]
+    CP --> |"GET /mock/carrier/plan?userId="| CARRIER["Carrier API"]
     CARRIER --> |"status response"| CP
     CP --> |"upsert entitlement"| DB
 
@@ -625,7 +609,7 @@ Polls the carrier API for all known carrier-entitled users. Updates entitlement 
 ```
 Every 5 minutes:
   → Fetch all users with CARRIER source entitlements
-  → For each user, call GET {CARRIER_URL}/carrier/subscriptions/{userId}
+  → For each user, call GET {CARRIER_URL}/mock/carrier/plan?userId={userId}
   → Upsert entitlement based on carrier response
   → Log poll result to carrier_poll_log
   → Record audit entry if state changed
@@ -679,7 +663,7 @@ Applied in order (outermost first):
 flowchart LR
     REQ["Incoming<br/>Request"] --> RID["RequestID"]
     RID --> RIP["RealIP"]
-    RIP --> RL["RateLimiter<br/><i>10 req/s per IP</i>"]
+    RIP --> RL["RateLimiter<br/><i>100 req/min per IP</i>"]
     RL --> BSL["BodySizeLimit<br/><i>≤ 1 MB</i>"]
     BSL --> CORS["CORS"]
     CORS --> LOG["RequestLogger"]
@@ -694,10 +678,10 @@ flowchart LR
 |------------|---------|-------------|
 | **RequestID** | chi | Generates unique `X-Request-Id` header for request tracing |
 | **RealIP** | chi | Resolves real client IP from `X-Forwarded-For` / `X-Real-Ip` headers |
-| **RateLimiter** | `middleware/` | Per-IP rate limiting (10 req/s burst, 10 req/s sustained). Uses `net.SplitHostPort` to extract IP from `RemoteAddr` |
+| **RateLimiter** | `middleware/` | Per-IP rate limiting (100 req/min). Uses `net.SplitHostPort` to extract IP from `RemoteAddr` |
 | **BodySizeLimit** | `middleware/` | Rejects requests with body > 1MB via `http.MaxBytesReader` |
-| **CORS** | chi | Allows all origins, standard methods, common headers |
-| **RequestLogger** | chi | Structured request logging (method, path, status, duration) |
+| **CORS** | `middleware/` | Custom CORS — allows all origins, GET/POST/OPTIONS, Content-Type + Authorization headers |
+| **RequestLogger** | `middleware/` | Structured request logging via slog (method, path, status, duration) |
 | **Recoverer** | chi | Catches panics, returns 500 with stack trace in logs |
 
 ## Configuration
@@ -740,8 +724,8 @@ Overall coverage: **85.5%** across 7 packages.
 | `internal/adapter/httphandler/` | 92.1% | HTTP handlers — endpoint tests, validation, response formats |
 | `internal/service/` | 87.8% | Reconciler service — event processing, entitlement updates |
 | `internal/adapter/carrierhttp/` | 88.2% | Carrier client — HTTP integration with mock server |
-| `internal/adapter/sqliterepo/` | 83.2% | Repository — CRUD operations, transaction handling |
-| `internal/adapter/middleware/` | 63.1% | Middleware — rate limiting, body size limit |
+| `internal/adapter/sqlite/` | 83.2% | Repository — CRUD operations, transaction handling |
+| `internal/middleware/` | 63.1% | Middleware — rate limiting, body size limit |
 
 ### Test Categories
 
@@ -806,7 +790,7 @@ Multi-stage build producing a minimal Alpine image:
 
 ```dockerfile
 # Stage 1: Build (Go 1.26, CGO_ENABLED=0)
-# Stage 2: Runtime (alpine:3.21, minimal footprint)
+# Stage 2: Runtime (alpine:3.20, minimal footprint)
 ```
 
 The binary is statically compiled with `CGO_ENABLED=0` using the pure-Go SQLite driver, so no C libraries are needed at runtime.
@@ -828,7 +812,7 @@ healthcheck:
 The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 
 1. Stops accepting new connections
-2. Waits up to 30 seconds for in-flight requests
+2. Waits up to 10 seconds for in-flight requests
 3. Cancels all background worker goroutines via context
 4. Closes database connection
 
@@ -840,7 +824,7 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 | Router | chi | v5.3.0 |
 | Database | SQLite (pure Go) | modernc.org/sqlite v1.50.1 |
 | Testing | testing + testify | v1.11.1 |
-| Container | Docker (Alpine) | 3.21 |
+| Container | Docker (Alpine) | 3.20 |
 | Logging | chi/log + stdlib | Structured |
 | Architecture | Hexagonal (ports & adapters) | — |
 
@@ -853,24 +837,40 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 │   ├── domain/
 │   │   ├── entitlement.go          # Entitlement entity, state machine, resolution
 │   │   ├── product.go              # Product catalog with durations
-│   │   └── audit.go                # Audit entry model
+│   │   ├── audit.go                # Audit entry model
+│   │   └── notification.go         # Notification scheduling logic
 │   ├── port/
-│   │   └── repository.go           # All repository interfaces (ports)
+│   │   ├── repository.go           # All repository interfaces (ports)
+│   │   └── carrier.go              # Carrier client interface
 │   ├── service/
-│   │   └── reconciler.go           # Reconciler use-case orchestration
-│   └── adapter/
-│       ├── httphandler/
-│       │   └── handler.go          # HTTP routes + handlers
-│       ├── sqliterepo/
-│       │   └── sqlite.go           # SQLite repository implementation
-│       ├── carrierhttp/
-│       │   └── client.go           # Carrier API HTTP client
-│       └── middleware/
-│           └── middleware.go        # Rate limiter, body size limit
+│   │   ├── reconciler.go           # Reconciler use-case orchestration
+│   │   ├── poller.go               # Carrier polling worker
+│   │   └── notifier.go             # Notification dispatch + scheduling
+│   ├── adapter/
+│   │   ├── httphandler/
+│   │   │   └── handler.go          # HTTP routes + handlers
+│   │   ├── sqlite/
+│   │   │   ├── sqlite.go           # Repository constructors
+│   │   │   ├── db.go               # Common DB helpers
+│   │   │   ├── tx.go               # Transaction provider
+│   │   │   ├── entitlement.go      # Entitlement CRUD
+│   │   │   ├── store_event.go      # Store event dedup + insert
+│   │   │   ├── notification.go     # Notification scheduling + dispatch
+│   │   │   ├── carrier_poll.go     # Carrier poll logging + locks
+│   │   │   ├── audit_log.go        # Audit log insert + queries
+│   │   │   └── helpers.go          # Shared query helpers
+│   │   └── carrierhttp/
+│   │       └── client.go           # Carrier API HTTP client
+│   └── middleware/
+│       ├── ratelimit.go            # Per-IP rate limiter (100 req/min)
+│       ├── body_size.go            # Request body size limit (1MB)
+│       ├── cors.go                 # Custom CORS middleware
+│       └── logging.go              # Structured request logger
 ├── docs/
 │   ├── prd.md                      # Product requirements document
 │   └── plan.md                     # Implementation plan
 ├── Dockerfile                       # Multi-stage Alpine build
+├── Dockerfile.mock                  # Mock carrier API server
 ├── docker-compose.yml               # Reconciler + mock carrier
 ├── Makefile                         # Build, test, run commands
 ├── go.mod / go.sum                  # Dependencies
