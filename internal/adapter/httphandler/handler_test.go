@@ -170,6 +170,7 @@ type mockAuditRepo struct {
 	entries    []domain.AuditEntry
 	returnData []domain.AuditEntry
 	insertErr  error
+	getByUserErr error
 }
 
 func (m *mockAuditRepo) Insert(_ context.Context, entry domain.AuditEntry) error {
@@ -181,6 +182,9 @@ func (m *mockAuditRepo) Insert(_ context.Context, entry domain.AuditEntry) error
 }
 
 func (m *mockAuditRepo) GetByUser(_ context.Context, userID string) ([]domain.AuditEntry, error) {
+	if m.getByUserErr != nil {
+		return nil, m.getByUserErr
+	}
 	if m.returnData != nil {
 		return m.returnData, nil
 	}
@@ -535,4 +539,69 @@ func TestHandleGetTimeline_Empty(t *testing.T) {
 	var resp []interface{}
 	json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Empty(t, resp)
+}
+
+func TestHandleGetTimeline_ErrorFromReconciler(t *testing.T) {
+	entRepo := newEntRepo()
+	eventRepo := newEventRepo()
+	notifRepo := newNotifRepo()
+	auditRepo := &mockAuditRepo{}
+	auditRepo.getByUserErr = fmt.Errorf("database error")
+
+	r := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, testLogger())
+	
+	_, err := r.GetTimeline(context.Background(), "u_42")
+	
+	h := New(r)
+
+	rr := executeRequest(h, http.MethodGet, "/users/u_42/timeline", nil)
+	
+	fmt.Printf("Response status: %d\n", rr.Code)
+	fmt.Printf("Response body: %s\n", rr.Body.String())
+	
+	if err != nil {
+		assert.Equal(t, http.StatusInternalServerError, rr.Code)
+		var resp map[string]string
+		json.NewDecoder(rr.Body).Decode(&resp)
+		assert.Equal(t, "internal error", resp["error"])
+	} else {
+		t.Errorf("Expected service to return error, but got none")
+	}
+}
+
+func TestHandleGetTimeline_MissingUserID(t *testing.T) {
+	h, _, _ := setupHandler()
+
+	rr := executeRequest(h, http.MethodGet, "/users//timeline", nil)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var resp map[string]string
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Equal(t, "user id required", resp["error"])
+}
+
+func TestHandleGetEntitlement_ErrorFromReconciler(t *testing.T) {
+	entRepo := newEntRepo()
+	entRepo.getByUserErr = fmt.Errorf("database error")
+
+	r := service.NewReconciler(entRepo, newEventRepo(), newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
+	h := New(r)
+
+	rr := executeRequest(h, http.MethodGet, "/users/u_42/entitlement", nil)
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	var resp map[string]string
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Equal(t, "internal error", resp["error"])
+}
+
+func TestHandleGetEntitlement_EmptyUserID(t *testing.T) {
+	h, _, _ := setupHandler()
+
+	rr := executeRequest(h, http.MethodGet, "/users//entitlement", nil)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var resp map[string]string
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Equal(t, "user id required", resp["error"])
 }

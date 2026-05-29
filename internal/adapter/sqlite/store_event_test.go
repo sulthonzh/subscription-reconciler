@@ -51,6 +51,24 @@ func TestStoreEventInsert_Duplicate(t *testing.T) {
 	assert.False(t, inserted)
 }
 
+func TestStoreEventInsert_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewStoreEventRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.Insert(ctx, domain.StoreEvent{
+		EventID:     "evt_001",
+		UserID:      "u1",
+		Type:        domain.EventInitialPurchase,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
+	})
+	require.Error(t, err)
+}
+
 func TestStoreEventInsert_DifferentUsers(t *testing.T) {
 	t.Parallel()
 	db := setupTestDB(t)

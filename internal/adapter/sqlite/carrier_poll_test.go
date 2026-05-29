@@ -98,6 +98,31 @@ func TestReleaseLock(t *testing.T) {
 	assert.False(t, lockedUntilVal.Valid)
 }
 
+func TestAcquireLock_QueryError(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewCarrierPollLogRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.AcquireLock(ctx, "u1", time.Now().UTC().Add(2*time.Minute))
+	require.Error(t, err)
+}
+
+func TestAcquireLock_InsertError(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewCarrierPollLogRepo(db)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, "PRAGMA query_only = true")
+	require.NoError(t, err)
+
+	_, err = repo.AcquireLock(ctx, "u1", time.Now().UTC().Add(2*time.Minute))
+	require.Error(t, err)
+}
+
 func TestAcquireLock_DifferentUsers(t *testing.T) {
 	t.Parallel()
 	db := setupTestDB(t)

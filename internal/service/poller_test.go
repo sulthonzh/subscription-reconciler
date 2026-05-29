@@ -371,6 +371,194 @@ func TestPollAll_ConcurrentWorkers_NoDoubleProcessing(t *testing.T) {
 	}
 }
 
+func TestPollUser_CarrierError_ApiErrorPath(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active", err: fmt.Errorf("network timeout")}
+	pollRepo := newMockPollLogRepo()
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.True(t, entRepo.entitlements["u_42:CARRIER"].Active,
+		"carrier error should not change state")
+	assert.Len(t, pollRepo.inserts, 1)
+	assert.Equal(t, "api_error", pollRepo.inserts[0].status)
+}
+
+func TestPollUser_InactiveStatus(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "inactive"}
+	pollRepo := newMockPollLogRepo()
+	auditRepo := newMockAuditRepo()
+
+	p := NewPoller(entRepo, pollRepo, carrier, auditRepo, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.False(t, entRepo.entitlements["u_42:CARRIER"].Active,
+		"inactive response should deactivate")
+	assert.Equal(t, "CARRIER_INACTIVE", entRepo.entitlements["u_42:CARRIER"].Reason)
+	assert.Len(t, auditRepo.entries, 1, "should write audit entry on deactivation")
+}
+
+func TestPollUser_AcquireLockError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active"}
+	pollRepo := newMockPollLogRepo()
+	pollRepo.acquireLockErr = fmt.Errorf("lock acquisition failed")
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 0, carrier.called, "lock error should skip polling")
+	assert.Len(t, pollRepo.inserts, 0, "should not log poll result when lock fails")
+}
+
+func TestPollUser_ReleaseLockError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active"}
+	pollRepo := newMockPollLogRepo()
+	pollRepo.releaseLockErr = fmt.Errorf("lock release failed")
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.Len(t, pollRepo.inserts, 1, "should still log poll result")
+}
+
+func TestPollUser_GetByUserAndSourceError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	entRepo.getByUserAndSourceErr = fmt.Errorf("db error")
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "inactive"}
+	pollRepo := newMockPollLogRepo()
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.Len(t, pollRepo.inserts, 1)
+	assert.Equal(t, "inactive", pollRepo.inserts[0].status)
+}
+
+func TestPollUser_ActiveStatus(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active"}
+	pollRepo := newMockPollLogRepo()
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.Len(t, pollRepo.inserts, 1)
+	assert.Equal(t, "active", pollRepo.inserts[0].status)
+	assert.True(t, entRepo.entitlements["u_42:CARRIER"].Active, "should remain active")
+}
+
+func TestPollUser_InsertError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "active"}
+	pollRepo := newMockPollLogRepo()
+	pollRepo.insertErr = fmt.Errorf("insert failed")
+
+	p := NewPoller(entRepo, pollRepo, carrier, nil, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called, "should still call carrier even on insert error")
+	assert.Len(t, pollRepo.inserts, 0, "should not insert when Insert returns error")
+	assert.True(t, entRepo.entitlements["u_42:CARRIER"].Active, "should remain active")
+}
+
+func TestPollUser_UpdateActiveError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+	entRepo.updateActiveErr = fmt.Errorf("update failed")
+
+	carrier := &mockCarrierClient{status: "inactive"}
+	pollRepo := newMockPollLogRepo()
+	auditRepo := newMockAuditRepo()
+
+	p := NewPoller(entRepo, pollRepo, carrier, auditRepo, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.Len(t, pollRepo.inserts, 1, "should still log poll result")
+	assert.Equal(t, "inactive", pollRepo.inserts[0].status)
+	assert.True(t, entRepo.entitlements["u_42:CARRIER"].Active, "should still be active due to update error")
+	assert.Len(t, auditRepo.entries, 0, "should not write audit entry when update fails")
+}
+
+func TestPollUser_AuditInsertError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	now := time.Now()
+	entRepo.entitlements["u_42:CARRIER"] = &domain.Entitlement{
+		UserID: "u_42", Source: domain.SourceCarrier,
+		Active: true, Reason: "ACTIVE", LastChangedAt: now, CreatedAt: now,
+	}
+
+	carrier := &mockCarrierClient{status: "inactive"}
+	pollRepo := newMockPollLogRepo()
+	auditRepo := newMockAuditRepo()
+	auditRepo.insertErr = fmt.Errorf("audit down")
+
+	p := NewPoller(entRepo, pollRepo, carrier, auditRepo, testLogger())
+	p.pollUser(context.Background(), "u_42")
+
+	assert.Equal(t, 1, carrier.called)
+	assert.Len(t, pollRepo.inserts, 1, "should still log poll result")
+	assert.Equal(t, "inactive", pollRepo.inserts[0].status)
+	assert.False(t, entRepo.entitlements["u_42:CARRIER"].Active, "should deactivate entitlement even if audit fails")
+	assert.Equal(t, "CARRIER_INACTIVE", entRepo.entitlements["u_42:CARRIER"].Reason)
+	assert.Len(t, auditRepo.entries, 0, "should not write audit entry when insert fails")
+}
+
 // Verify the Poller satisfies nothing extra - just a compile check
 var _ = func() {
 	var _ port.CarrierClient = (*mockCarrierClient)(nil)

@@ -89,3 +89,50 @@ func TestCheckPlan_CancelledContext(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "api_error", status)
 }
+
+func TestCheckPlan_Status403(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	status, err := client.CheckPlan(context.Background(), "u_42")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "api_error", status)
+}
+
+func TestCheckPlan_Status404(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	status, err := client.CheckPlan(context.Background(), "u_42")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "api_error", status)
+}
+
+func TestCheckPlan_Status500(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	status, err := client.CheckPlan(context.Background(), "u_42")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "api_error", status)
+}
+
+func TestCheckPlan_NetworkErrorInRequestCreation(t *testing.T) {
+	client := NewClient("://invalid-url")
+	status, err := client.CheckPlan(context.Background(), "u_42")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "api_error", status)
+}

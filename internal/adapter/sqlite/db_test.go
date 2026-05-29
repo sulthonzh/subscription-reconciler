@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -35,6 +36,26 @@ func TestOpen_InvalidPath(t *testing.T) {
 	}
 	// Open may not error immediately (SQLite defers file creation), but we test it doesn't panic
 	_ = err
+}
+
+func TestOpen_PragmaError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "readonly.db")
+
+	f, err := os.Create(dbPath)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	require.NoError(t, os.Chmod(dbPath, 0444))
+	defer os.Chmod(dbPath, 0644)
+
+	db, err := Open(dbPath)
+	if db != nil {
+		db.Close()
+	}
+	require.Error(t, err)
 }
 
 func TestOpen_InMemory(t *testing.T) {

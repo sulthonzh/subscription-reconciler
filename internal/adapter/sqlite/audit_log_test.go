@@ -83,6 +83,52 @@ func TestAuditLogGetByUser_Empty(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
+func TestAuditLogGetByUser_ScanError(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewAuditLogRepo(db)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `DROP TABLE audit_log`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `CREATE TABLE audit_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, trigger_id TEXT, source TEXT NOT NULL, previous_state TEXT DEFAULT '', next_state TEXT DEFAULT '', created_at TEXT NOT NULL)`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `INSERT INTO audit_log (id, user_id, trigger_id, source, previous_state, next_state, created_at) VALUES ('notanumber', 'u1', 'evt', 'STORE', '{}', '{}', '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+
+	_, err = repo.GetByUser(ctx, "u1")
+	require.Error(t, err)
+}
+
+func TestAuditLogGetByUser_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewAuditLogRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.GetByUser(ctx, "u1")
+	require.Error(t, err)
+}
+
+func TestAuditLogInsert_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewAuditLogRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	err := repo.Insert(ctx, domain.AuditEntry{
+		UserID:    "u1",
+		Source:    domain.SourceStore,
+		CreatedAt: time.Now().UTC(),
+	})
+	require.Error(t, err)
+}
+
 func TestAuditLogInsert_EmptyTriggerID(t *testing.T) {
 	t.Parallel()
 	db := setupTestDB(t)

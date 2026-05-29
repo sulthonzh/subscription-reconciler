@@ -105,3 +105,100 @@ func TestNotifier_Run_FindDueError(t *testing.T) {
 
 	n.Run(ctx, 5*time.Millisecond)
 }
+
+func TestScheduleForExpiring_MultipleEntitlements(t *testing.T) {
+	entRepo := newMockEntRepo()
+	notifRepo := newMockNotifRepo()
+	now := time.Now()
+	threshold := now.Add(domain.NotificationLeadTime)
+	
+	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
+		UserID: "u_1", Source: domain.SourceStore,
+		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
+	}
+	entRepo.entitlements["u_2:STORE"] = &domain.Entitlement{
+		UserID: "u_2", Source: domain.SourceStore,
+		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
+	}
+
+	n := NewNotifier(entRepo, notifRepo, testLogger())
+
+	scheduled, err := n.ScheduleForExpiring(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 2, scheduled)
+	assert.Len(t, notifRepo.scheduled, 2)
+	assert.Contains(t, []string{"u_1", "u_2"}, notifRepo.scheduled[0].UserID)
+	assert.Contains(t, []string{"u_1", "u_2"}, notifRepo.scheduled[1].UserID)
+}
+
+func TestScheduleForExpiring_GetExpiringBeforeError(t *testing.T) {
+	entRepo := newMockEntRepo()
+	entRepo.getExpiringBeforeErr = fmt.Errorf("db down")
+
+	n := NewNotifier(entRepo, newMockNotifRepo(), testLogger())
+
+	_, err := n.ScheduleForExpiring(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db down")
+}
+
+func TestScheduleForExpiring_ScheduleErrorContinue(t *testing.T) {
+	entRepo := newMockEntRepo()
+	notifRepo := newMockNotifRepo()
+	now := time.Now()
+	threshold := now.Add(domain.NotificationLeadTime)
+	
+	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
+		UserID: "u_1", Source: domain.SourceStore,
+		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
+	}
+	entRepo.entitlements["u_2:STORE"] = &domain.Entitlement{
+		UserID: "u_2", Source: domain.SourceStore,
+		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
+	}
+
+	notifRepo.firstScheduleFail = true
+
+	n := NewNotifier(entRepo, notifRepo, testLogger())
+
+	scheduled, err := n.ScheduleForExpiring(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, scheduled, "Should continue after one fails")
+	assert.Len(t, notifRepo.scheduled, 2, "Should store both notifications but only count inserted ones")
+	assert.Contains(t, []string{"u_1", "u_2"}, notifRepo.scheduled[0].UserID)
+	assert.Contains(t, []string{"u_1", "u_2"}, notifRepo.scheduled[1].UserID)
+}
+
+func TestScheduleForExpiring_ScheduleDuplicate(t *testing.T) {
+	entRepo := newMockEntRepo()
+	notifRepo := newMockNotifRepo()
+	now := time.Now()
+	threshold := now.Add(domain.NotificationLeadTime)
+	
+	// Configure to return false (duplicate)
+	notifRepo.newScheduleReturnFalse = true
+	
+	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
+		UserID: "u_1", Source: domain.SourceStore,
+		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
+	}
+
+	n := NewNotifier(entRepo, notifRepo, testLogger())
+
+	scheduled, err := n.ScheduleForExpiring(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 0, scheduled, "Should not count duplicates")
+	assert.Len(t, notifRepo.scheduled, 1, "Should still schedule the notification")
+}
+
+func TestScheduleForExpiring_NoEntitlements(t *testing.T) {
+	entRepo := newMockEntRepo()
+	notifRepo := newMockNotifRepo()
+
+	n := NewNotifier(entRepo, notifRepo, testLogger())
+
+	scheduled, err := n.ScheduleForExpiring(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 0, scheduled)
+	assert.Len(t, notifRepo.scheduled, 0)
+}

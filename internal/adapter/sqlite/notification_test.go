@@ -150,6 +150,65 @@ func TestNotificationMarkSent(t *testing.T) {
 	assert.Empty(t, due2)
 }
 
+func TestNotificationFindDue_ScanError(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewNotificationRepo(db)
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `DROP TABLE notifications`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `CREATE TABLE notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL, scheduled_for TEXT NOT NULL, sent_at TEXT, created_at TEXT NOT NULL)`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `INSERT INTO notifications (id, user_id, type, scheduled_for, sent_at, created_at) VALUES ('notanumber', 'u1', 'PREMIUM_EXPIRES_SOON', '2026-01-01T00:00:00Z', NULL, '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+
+	_, err = repo.FindDue(ctx, time.Now().UTC().Add(24*time.Hour), 10)
+	require.Error(t, err)
+}
+
+func TestNotificationSchedule_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewNotificationRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.Schedule(ctx, domain.Notification{
+		UserID:       "u1",
+		Type:         domain.NotificationPremiumExpiresSoon,
+		ScheduledFor: time.Now().UTC(),
+		CreatedAt:    time.Now().UTC(),
+	})
+	require.Error(t, err)
+}
+
+func TestNotificationFindDue_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewNotificationRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	_, err := repo.FindDue(ctx, time.Now().UTC(), 10)
+	require.Error(t, err)
+}
+
+func TestNotificationMarkSent_ClosedDB(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	repo := NewNotificationRepo(db)
+	ctx := context.Background()
+
+	require.NoError(t, db.Close())
+
+	err := repo.MarkSent(ctx, 1, time.Now().UTC())
+	require.Error(t, err)
+}
+
 func TestNotificationFindDue_Empty(t *testing.T) {
 	t.Parallel()
 	db := setupTestDB(t)

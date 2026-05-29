@@ -7,33 +7,31 @@ import (
 	"time"
 )
 
-const (
-	rateLimitWindow = time.Minute
-	rateLimitMax    = 100
-	cleanupInterval = 2 * time.Minute
-)
-
-type ipEntry struct {
-	mu       sync.Mutex
-	count    int
-	resetAt  time.Time
+type rateLimiterConfig struct {
+	window          time.Duration
+	max             int
+	cleanupInterval time.Duration
 }
 
-// RateLimiter returns middleware that limits each IP to rateLimitMax requests per minute.
-// A background goroutine periodically cleans stale entries.
-func RateLimiter() func(http.Handler) http.Handler {
+type ipEntry struct {
+	mu      sync.Mutex
+	count   int
+	resetAt time.Time
+}
+
+func newRateLimiter(cfg rateLimiterConfig) (func(http.Handler) http.Handler, func()) {
 	var store sync.Map
 
 	done := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(cleanupInterval)
+		ticker := time.NewTicker(cfg.cleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-done:
 				return
 			case now := <-ticker.C:
-				cutoff := now.Add(-rateLimitWindow)
+				cutoff := now.Add(-cfg.window)
 				store.Range(func(key, value interface{}) bool {
 					entry := value.(*ipEntry)
 					entry.mu.Lock()
@@ -48,7 +46,9 @@ func RateLimiter() func(http.Handler) http.Handler {
 		}
 	}()
 
-	return func(next http.Handler) http.Handler {
+	stop := func() { close(done) }
+
+	handler := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip, _, err := net.SplitHostPort(r.RemoteAddr)
 			if err != nil {
@@ -56,20 +56,20 @@ func RateLimiter() func(http.Handler) http.Handler {
 			}
 
 			val, _ := store.LoadOrStore(ip, &ipEntry{
-				resetAt: time.Now().Add(rateLimitWindow),
+				resetAt: time.Now().Add(cfg.window),
 			})
 			entry := val.(*ipEntry)
 
 			entry.mu.Lock()
 			if time.Now().After(entry.resetAt) {
 				entry.count = 0
-				entry.resetAt = time.Now().Add(rateLimitWindow)
+				entry.resetAt = time.Now().Add(cfg.window)
 			}
 			entry.count++
 			count := entry.count
 			entry.mu.Unlock()
 
-			if count > rateLimitMax {
+			if count > cfg.max {
 				http.Error(w, "too many requests", http.StatusTooManyRequests)
 				return
 			}
@@ -77,4 +77,15 @@ func RateLimiter() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+
+	return handler, stop
+}
+
+func RateLimiter() func(http.Handler) http.Handler {
+	mw, _ := newRateLimiter(rateLimiterConfig{
+		window:          time.Minute,
+		max:             100,
+		cleanupInterval: 2 * time.Minute,
+	})
+	return mw
 }

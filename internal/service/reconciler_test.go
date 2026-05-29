@@ -2,24 +2,29 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
+	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
 
 type mockEntitlementRepo struct {
-	entitlements       map[string]*domain.Entitlement
-	upserted          []domain.Entitlement
-	updated           []updateCall
-	expireOverdueCount int
-	getByUserAndSourceErr error
-	getByUserErr          error
-	upsertErr             error
-	getActiveBySourceErr  error
+	entitlements            map[string]*domain.Entitlement
+	upserted               []domain.Entitlement
+	updated                []updateCall
+	expireOverdueCount     int
+	getByUserAndSourceErr  error
+	getByUserErr           error
+	upsertErr              error
+	getActiveBySourceErr   error
 	updateActiveErr       error
 	expireOverdueErr      error
+	getExpiringBeforeErr   error
 }
 
 type updateCall struct {
@@ -115,6 +120,9 @@ func (m *mockEntitlementRepo) ExpireOverdue(_ context.Context, now time.Time) (i
 }
 
 func (m *mockEntitlementRepo) GetExpiringBefore(_ context.Context, before time.Time) ([]domain.Entitlement, error) {
+	if m.getExpiringBeforeErr != nil {
+		return nil, m.getExpiringBeforeErr
+	}
 	var result []domain.Entitlement
 	for _, e := range m.entitlements {
 		if e.Active && e.ExpiresAt != nil && !e.ExpiresAt.After(before) {
@@ -151,6 +159,8 @@ type mockNotificationRepo struct {
 	scheduleErr error
 	findDueErr  error
 	markSentErr error
+	newScheduleReturnFalse bool
+	firstScheduleFail     bool
 }
 
 func newMockNotifRepo() *mockNotificationRepo {
@@ -160,6 +170,15 @@ func newMockNotifRepo() *mockNotificationRepo {
 func (m *mockNotificationRepo) Schedule(_ context.Context, notification domain.Notification) (bool, error) {
 	if m.scheduleErr != nil {
 		return false, m.scheduleErr
+	}
+	if m.newScheduleReturnFalse {
+		m.scheduled = append(m.scheduled, notification)
+		return false, nil // Simulate duplicate (already scheduled)
+	}
+	if m.firstScheduleFail {
+		m.firstScheduleFail = false // Reset for subsequent calls
+		m.scheduled = append(m.scheduled, notification)
+		return false, fmt.Errorf("first fail") // Return false but store for counting
 	}
 	m.scheduled = append(m.scheduled, notification)
 	return true, nil
@@ -181,8 +200,9 @@ func (m *mockNotificationRepo) MarkSent(_ context.Context, id int64, now time.Ti
 }
 
 type mockAuditLogRepo struct {
-	entries   []domain.AuditEntry
-	insertErr error
+	entries     []domain.AuditEntry
+	insertErr   error
+	getByUserErr error
 }
 
 func newMockAuditRepo() *mockAuditLogRepo {
@@ -198,6 +218,9 @@ func (m *mockAuditLogRepo) Insert(_ context.Context, entry domain.AuditEntry) er
 }
 
 func (m *mockAuditLogRepo) GetByUser(_ context.Context, userID string) ([]domain.AuditEntry, error) {
+	if m.getByUserErr != nil {
+		return nil, m.getByUserErr
+	}
 	var result []domain.AuditEntry
 	for _, e := range m.entries {
 		if e.UserID == userID {
@@ -225,4 +248,59 @@ func baseEvent() domain.StoreEvent {
 		EventTimeMs: time.Now().Add(-1 * time.Hour).UnixMilli(),
 		ProductID:   "premium_monthly",
 	}
+}
+
+func TestGetTimeline_WithAuditEntries(t *testing.T) {
+	auditRepo := newMockAuditRepo()
+	now := time.Now()
+	
+	auditRepo.entries = []domain.AuditEntry{
+		{
+			ID:         1,
+			UserID:     "u_42",
+			TriggerID:  "evt_001",
+			Source:     domain.SourceStore,
+			PreviousState: "{}",
+			NextState:     `{"active":true,"source":"STORE","reason":"INITIAL_PURCHASE"}`,
+			CreatedAt:   now,
+		},
+		{
+			ID:         2,
+			UserID:     "u_42",
+			TriggerID:  "evt_002",
+			Source:     domain.SourceStore,
+			PreviousState: `{"active":true,"source":"STORE","reason":"INITIAL_PURCHASE"}`,
+			NextState:     `{"active":false,"source":"STORE","reason":"EXPIRATION"}`,
+			CreatedAt:   now.Add(1 * time.Hour),
+		},
+	}
+
+	r := NewReconciler(nil, nil, nil, auditRepo, mockTxProvider{}, testLogger())
+
+	timeline, err := r.GetTimeline(context.Background(), "u_42")
+	require.NoError(t, err)
+	assert.Len(t, timeline, 2)
+	assert.Equal(t, "evt_001", timeline[0].TriggerID)
+	assert.Equal(t, "evt_002", timeline[1].TriggerID)
+}
+
+func TestGetTimeline_NoEntries(t *testing.T) {
+	auditRepo := newMockAuditRepo()
+
+	r := NewReconciler(nil, nil, nil, auditRepo, mockTxProvider{}, testLogger())
+
+	timeline, err := r.GetTimeline(context.Background(), "u_42")
+	require.NoError(t, err)
+	assert.Empty(t, timeline)
+}
+
+func TestGetTimeline_GetByUserError(t *testing.T) {
+	auditRepo := newMockAuditRepo()
+	auditRepo.getByUserErr = fmt.Errorf("db down")
+
+	r := NewReconciler(nil, nil, nil, auditRepo, mockTxProvider{}, testLogger())
+
+	_, err := r.GetTimeline(context.Background(), "u_42")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db down")
 }
