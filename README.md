@@ -11,12 +11,12 @@ Premium entitlement reconciler for multi-channel subscription management. Ingest
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/coverage-99.8%25-brightgreen?style=flat-square" alt="Overall Coverage">
+  <img src="https://img.shields.io/badge/coverage-100.0%25-brightgreen?style=flat-square" alt="Overall Coverage">
   <img src="https://img.shields.io/badge/domain-100.0%25-brightgreen?style=flat-square" alt="Domain Coverage">
   <img src="https://img.shields.io/badge/httphandler-100.0%25-brightgreen?style=flat-square" alt="HTTP Handler Coverage">
   <img src="https://img.shields.io/badge/service-100.0%25-brightgreen?style=flat-square" alt="Service Coverage">
   <img src="https://img.shields.io/badge/carrierhttp-100.0%25-brightgreen?style=flat-square" alt="Carrier HTTP Coverage">
-  <img src="https://img.shields.io/badge/sqlite-99.4%25-brightgreen?style=flat-square" alt="SQLite Coverage">
+  <img src="https://img.shields.io/badge/sqlite-100.0%25-brightgreen?style=flat-square" alt="SQLite Coverage">
   <img src="https://img.shields.io/badge/middleware-100.0%25-brightgreen?style=flat-square" alt="Middleware Coverage">
 </p>
 
@@ -721,7 +721,7 @@ This runs all tests with the Go race detector enabled and generates a coverage p
 
 ### Test Coverage
 
-Overall coverage: **99.8%** across 7 packages.
+Overall coverage: **100.0%** across 7 packages.
 
 | Package | Coverage | Description |
 |---------|----------|-------------|
@@ -729,10 +729,8 @@ Overall coverage: **99.8%** across 7 packages.
 | `internal/adapter/httphandler/` | 100.0% | HTTP handlers — endpoint tests, validation, response formats |
 | `internal/service/` | 100.0% | Reconciler service — event processing, entitlement updates |
 | `internal/adapter/carrierhttp/` | 100.0% | Carrier client — HTTP integration with mock server |
-| `internal/adapter/sqlite/` | 99.4% | Repository — CRUD operations, transaction handling |
+| `internal/adapter/sqlite/` | 100.0% | Repository — CRUD operations, transaction handling |
 | `internal/middleware/` | 100.0% | Middleware — rate limiting, body size limit, CORS, logging |
-
-> **Note:** SQLite `Open` is at 88.9% because the `sql.Open` failure path requires the driver to be unregistered, which is impossible to test within the same package that imports the driver.
 
 ### Test Categories
 
