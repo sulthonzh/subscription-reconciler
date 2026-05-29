@@ -71,6 +71,15 @@ func TestOpen_InMemory(t *testing.T) {
 	assert.Equal(t, 1, result)
 }
 
+func TestOpen_DriverNotRegistered(t *testing.T) {
+	orig := driverName
+	driverName = "nonexistent_driver_12345"
+	defer func() { driverName = orig }()
+
+	_, err := Open(":memory:")
+	assert.Error(t, err)
+}
+
 func TestSetupTestDB(t *testing.T) {
 	// Verify the shared test helper works with a temp copy of migrations
 	t.Parallel()

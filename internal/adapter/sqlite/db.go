@@ -7,8 +7,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+var driverName = "sqlite"
+
 func Open(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open(driverName, dbPath)
 	if err != nil {
 		return nil, err
 	}
