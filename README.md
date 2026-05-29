@@ -11,13 +11,13 @@ Premium entitlement reconciler for multi-channel subscription management. Ingest
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/coverage-85.5%25-yellowgreen?style=flat-square" alt="Overall Coverage">
+  <img src="https://img.shields.io/badge/coverage-99.8%25-brightgreen?style=flat-square" alt="Overall Coverage">
   <img src="https://img.shields.io/badge/domain-100.0%25-brightgreen?style=flat-square" alt="Domain Coverage">
-  <img src="https://img.shields.io/badge/httphandler-92.1%25-green?style=flat-square" alt="HTTP Handler Coverage">
-  <img src="https://img.shields.io/badge/service-87.8%25-yellowgreen?style=flat-square" alt="Service Coverage">
-  <img src="https://img.shields.io/badge/carrierhttp-88.2%25-yellowgreen?style=flat-square" alt="Carrier HTTP Coverage">
-  <img src="https://img.shields.io/badge/sqlite-83.2%25-yellow?style=flat-square" alt="SQLite Coverage">
-  <img src="https://img.shields.io/badge/middleware-63.1%25-orange?style=flat-square" alt="Middleware Coverage">
+  <img src="https://img.shields.io/badge/httphandler-100.0%25-brightgreen?style=flat-square" alt="HTTP Handler Coverage">
+  <img src="https://img.shields.io/badge/service-100.0%25-brightgreen?style=flat-square" alt="Service Coverage">
+  <img src="https://img.shields.io/badge/carrierhttp-100.0%25-brightgreen?style=flat-square" alt="Carrier HTTP Coverage">
+  <img src="https://img.shields.io/badge/sqlite-99.4%25-brightgreen?style=flat-square" alt="SQLite Coverage">
+  <img src="https://img.shields.io/badge/middleware-100.0%25-brightgreen?style=flat-square" alt="Middleware Coverage">
 </p>
 
 ---
@@ -721,16 +721,18 @@ This runs all tests with the Go race detector enabled and generates a coverage p
 
 ### Test Coverage
 
-Overall coverage: **85.5%** across 7 packages.
+Overall coverage: **99.8%** across 7 packages.
 
 | Package | Coverage | Description |
 |---------|----------|-------------|
 | `internal/domain/` | 100.0% | Business logic — state machine, resolution, event application |
-| `internal/adapter/httphandler/` | 92.1% | HTTP handlers — endpoint tests, validation, response formats |
-| `internal/service/` | 87.8% | Reconciler service — event processing, entitlement updates |
-| `internal/adapter/carrierhttp/` | 88.2% | Carrier client — HTTP integration with mock server |
-| `internal/adapter/sqlite/` | 83.2% | Repository — CRUD operations, transaction handling |
-| `internal/middleware/` | 63.1% | Middleware — rate limiting, body size limit |
+| `internal/adapter/httphandler/` | 100.0% | HTTP handlers — endpoint tests, validation, response formats |
+| `internal/service/` | 100.0% | Reconciler service — event processing, entitlement updates |
+| `internal/adapter/carrierhttp/` | 100.0% | Carrier client — HTTP integration with mock server |
+| `internal/adapter/sqlite/` | 99.4% | Repository — CRUD operations, transaction handling |
+| `internal/middleware/` | 100.0% | Middleware — rate limiting, body size limit, CORS, logging |
+
+> **Note:** SQLite `Open` is at 88.9% because the `sql.Open` failure path requires the driver to be unregistered, which is impossible to test within the same package that imports the driver.
 
 ### Test Categories
 
