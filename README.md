@@ -3,7 +3,7 @@
 Premium entitlement reconciler for multi-channel subscription management. Ingests signals from in-app store (webhooks), mobile carrier (polling), and third-party marketplace (bulk revoke) to maintain canonical premium access state per user.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&style=flat-square" alt="Go Version">
+  <img src="https://img.shields.io/badge/Go-1.26.2-00ADD8?logo=go&style=flat-square" alt="Go Version">
   <img src="https://img.shields.io/badge/SQLite-pure%20Go-003B57?logo=sqlite&style=flat-square" alt="SQLite">
   <img src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&style=flat-square" alt="Docker">
   <img src="https://img.shields.io/badge/chi-v5.3-00ADD8?style=flat-square" alt="Chi">
@@ -719,7 +719,7 @@ This runs all tests with the Go race detector enabled and generates a coverage p
 
 ### Test Coverage
 
-Overall coverage: **100.0%** across 7 packages.
+Overall coverage: **100.0%** across 6 testable packages (plus integration tests in `tests/integration/`).
 
 | Package | Coverage | Description |
 |---------|----------|-------------|
@@ -792,7 +792,7 @@ docker compose down
 Multi-stage build producing a minimal Alpine image:
 
 ```dockerfile
-# Stage 1: Build (Go 1.26, CGO_ENABLED=0)
+# Stage 1: Build (Go 1.26.2, CGO_ENABLED=0)
 # Stage 2: Runtime (alpine:3.20, minimal footprint)
 ```
 
@@ -823,7 +823,7 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Language | Go | 1.26 |
+| Language | Go | 1.26.2 |
 | Router | chi | v5.3.0 |
 | Database | SQLite (pure Go) | modernc.org/sqlite v1.50.1 |
 | Testing | testing + testify | v1.11.1 |
@@ -855,7 +855,7 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 │   │   ├── httphandler/
 │   │   │   └── handler.go          # HTTP routes + handlers
 │   │   ├── sqlite/
-│   │   │   ├── sqlite.go           # Repository constructors
+│   │   │   ├── sqlite.go           # Package declaration
 │   │   │   ├── db.go               # Common DB helpers
 │   │   │   ├── tx.go               # Transaction provider
 │   │   │   ├── entitlement.go      # Entitlement CRUD
@@ -875,11 +875,9 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 │   └── integration/
 │       └── integration_test.go     # Full-stack HTTP→SQLite tests
 ├── migrations/
-│   ├── 001_create_tables.up.sql    # Schema creation
-│   └── 001_create_tables.down.sql  # Schema teardown
-├── docs/
-│   ├── prd.md                      # Product requirements document
-│   └── plan.md                     # Implementation plan
+│   ├── 001_create_tables.up.sql    # Reference SQL (not used at runtime)
+│   └── 001_create_tables.down.sql  # Reference SQL (not used at runtime)
+├── docs/                             # Local reference only (not tracked)
 ├── Dockerfile                       # Multi-stage Alpine build
 ├── Dockerfile.mock                  # Mock carrier API server
 ├── docker-compose.yml               # Reconciler + mock carrier
