@@ -367,6 +367,11 @@ POST /webhooks/store
 {"error": "all fields are required"}
 ```
 
+**Response (unknown product)** `400`:
+```json
+{"error": "unknown product ID"}
+```
+
 ---
 
 ### Marketplace Bulk Revoke

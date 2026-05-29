@@ -395,6 +395,29 @@ func TestRoutes_ReturnsRouter(t *testing.T) {
 	assert.NotEmpty(t, routes, "Routes() should register at least one route")
 }
 
+func TestHandleStoreWebhook_UnknownProduct(t *testing.T) {
+	entRepo := newEntRepo()
+	eventRepo := newEventRepo()
+	
+	r := service.NewReconciler(entRepo, eventRepo, newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
+	h := New(r)
+
+	body := map[string]interface{}{
+		"eventId":     "evt_unknown",
+		"userId":      "u_42",
+		"type":        "INITIAL_PURCHASE",
+		"eventTimeMs": time.Now().Add(-1 * time.Hour).UnixMilli(),
+		"productId":   "unknown_product",
+	}
+
+	rr := executeRequest(h, http.MethodPost, "/webhooks/store", body)
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+	var resp map[string]string
+	json.NewDecoder(rr.Body).Decode(&resp)
+	assert.Equal(t, "unknown product ID", resp["error"])
+}
+
 func TestHandleStoreWebhook_InternalError(t *testing.T) {
 	entRepo := newEntRepo()
 	eventRepo := newEventRepo()

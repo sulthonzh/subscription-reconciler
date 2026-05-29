@@ -2,6 +2,7 @@ package httphandler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -64,6 +65,10 @@ func (h *Handler) HandleStoreWebhook(w http.ResponseWriter, r *http.Request) {
 
 	processed, err := h.reconciler.ProcessStoreEvent(r.Context(), event)
 	if err != nil {
+		if errors.Is(err, domain.ErrProductNotFound) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown product ID"})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
