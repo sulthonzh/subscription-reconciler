@@ -209,7 +209,7 @@ The codebase follows a **ports-and-adapters** pattern:
 - **Multi-row entitlement model** — one row per `(user_id, source)`, enabling independent source tracking
 - **Priority-based resolution** — STORE > MARKETPLACE > CARRIER; highest-priority active source wins
 - **Context-based transactions** — repositories detect active transaction from context, fallback to `*sql.DB`
-- **Deterministic event ordering** — events sorted by `eventTimeMs` then `receivedAt` for consistent replay
+- **Out-of-order event guard** — store events with `eventTimeMs` older than existing `LastEventTimeMs` are silently ignored to prevent stale overwrites
 
 ## API Reference
 
@@ -286,15 +286,15 @@ GET /users/{userId}/timeline
   {
     "triggerId": "evt_abc123",
     "source": "STORE",
-    "previousState": "INACTIVE",
-    "nextState": "ACTIVE",
+    "previousState": "",
+    "nextState": "{\"active\":true,\"source\":\"STORE\",\"reason\":\"INITIAL_PURCHASE\"}",
     "createdAt": "2024-05-28T06:26:40Z"
   },
   {
     "triggerId": "evt_def456",
     "source": "STORE",
-    "previousState": "ACTIVE",
-    "nextState": "INACTIVE",
+    "previousState": "{\"active\":true,\"source\":\"STORE\",\"reason\":\"RENEWAL\"}",
+    "nextState": "{\"active\":false,\"source\":\"STORE\",\"reason\":\"EXPIRATION\"}",
     "createdAt": "2024-05-29T06:26:40Z"
   }
 ]
@@ -306,8 +306,8 @@ GET /users/{userId}/timeline
 |-------|------|-------------|
 | `triggerId` | `string` | The event ID that caused the transition |
 | `source` | `string` | Source of the triggering event |
-| `previousState` | `string` | State before transition (`ACTIVE`, `INACTIVE`) |
-| `nextState` | `string` | State after transition |
+| `previousState` | `string` | JSON-encoded state before transition (empty string for new entitlements) |
+| `nextState` | `string` | JSON-encoded state after transition |
 | `createdAt` | `string` | ISO 8601 timestamp of the transition |
 
 ---
@@ -364,7 +364,7 @@ POST /webhooks/store
 
 **Response (validation error)** `400`:
 ```json
-{"error": "missing required field: eventId"}
+{"error": "all fields are required"}
 ```
 
 ---
@@ -401,7 +401,7 @@ POST /webhooks/marketplace/revoke
 
 **Response (validation error)** `400`:
 ```json
-{"error": "missing required field: userIds"}
+{"error": "userIds must be non-empty"}
 ```
 
 ## Domain Model
@@ -593,7 +593,7 @@ flowchart TB
     CP --> |"upsert entitlement"| DB
 
     NS --> |"find expiring within 24h"| DB
-    NS --> |"insert EXPIRY_WARNING"| DB
+    NS --> |"insert PREMIUM_EXPIRES_SOON"| DB
 
     NT --> |"find pending & due"| DB
     NT --> |"mark sent"| DB
@@ -615,7 +615,9 @@ Every 5 minutes:
   → Record audit entry if state changed
 ```
 
-**Stale detection:** If a carrier entitlement's `last_event_time_ms` is older than 2× poll interval (10 minutes), it's flagged as stale during reconciliation.
+**Out-of-order guard:** Store events have a newer-than guard — if `event.EventTimeMs` is older than the existing `LastEventTimeMs`, the event is silently ignored. This prevents stale events from overwriting newer state (see `reconciler.go`).
+
+**Distributed locking:** Each poll acquires a `locked_until` row lock (2-minute TTL) via `AcquireLock` to prevent concurrent duplicate polling across multiple instances.
 
 ### 2. Notification Scheduler (5-minute interval)
 
@@ -624,8 +626,9 @@ Proactively schedules expiry warning notifications for users whose entitlements 
 ```
 Every 5 minutes:
   → Query all active entitlements expiring within 24 hours
-  → Skip users who already have a pending EXPIRY_WARNING notification
-  → Insert new notification with type EXPIRY_WARNING, sent=false
+  → For each, create notification with type PREMIUM_EXPIRES_SOON
+  → UNIQUE(user_id, type, scheduled_for) constraint prevents duplicates
+  → scheduled_for = expires_at - 24h (clamped to now if already past)
 ```
 
 ### 3. Notifier (1-minute interval)
@@ -634,9 +637,9 @@ Dispatches pending notifications that have reached their scheduled send time.
 
 ```
 Every 1 minute:
-  → Query notifications where sent=false AND scheduled_at <= now
+  → Query notifications where sent_at IS NULL AND scheduled_for <= now
   → For each notification, log dispatch (stdout in current implementation)
-  → Mark notification as sent with current timestamp
+  → Set sent_at = now to mark as dispatched
 ```
 
 ### 4. Expiry Sweeper (5-minute interval)
@@ -825,7 +828,7 @@ The server handles `SIGINT`/`SIGTERM` for graceful shutdown:
 | Database | SQLite (pure Go) | modernc.org/sqlite v1.50.1 |
 | Testing | testing + testify | v1.11.1 |
 | Container | Docker (Alpine) | 3.20 |
-| Logging | chi/log + stdlib | Structured |
+| Logging | slog (stdlib) | Structured JSON |
 | Architecture | Hexagonal (ports & adapters) | — |
 
 ### Project Structure
