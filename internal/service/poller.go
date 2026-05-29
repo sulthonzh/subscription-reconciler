@@ -124,7 +124,7 @@ func (p *Poller) pollUser(ctx context.Context, userID string) {
 	var previousState string
 	if ent, err := p.entRepo.GetByUserAndSource(ctx, userID, domain.SourceCarrier); err == nil && ent != nil {
 		stateJSON, _ := json.Marshal(map[string]interface{}{
-			"active":  ent.Active,
+			"active": ent.Active,
 			"source": "CARRIER",
 		})
 		previousState = string(stateJSON)

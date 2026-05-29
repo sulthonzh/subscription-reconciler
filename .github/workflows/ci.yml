@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          args: --timeout=5m
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Run tests
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./internal/... ./tests/...
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${COVERAGE}%"
+          PASS=$(echo "$COVERAGE >= 99" | bc -l)
+          if [ "$PASS" -ne 1 ]; then
+            echo "Coverage ${COVERAGE}% is below 99% threshold"
+            exit 1
+          fi
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-profile
+          path: coverage.out
+          retention-days: 7
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - name: Build server binary
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/server
+      - name: Build mock carrier binary
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/mockcarrier
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build server image
+        run: docker build -t subscription-reconciler:test .
+      - name: Build mock carrier image
+        run: docker build -f Dockerfile.mock -t mock-carrier:test .
+      - name: Verify server starts healthy
+        run: |
+          docker compose up --build -d
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Server healthy after ${i}s"
+              docker compose down
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start"
+          docker compose logs
+          docker compose down
+          exit 1
+
+  vet:
+    name: Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - run: go vet ./...

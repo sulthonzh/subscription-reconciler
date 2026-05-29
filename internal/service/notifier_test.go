@@ -111,7 +111,7 @@ func TestScheduleForExpiring_MultipleEntitlements(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	now := time.Now()
 	threshold := now.Add(domain.NotificationLeadTime)
-	
+
 	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
 		UserID: "u_1", Source: domain.SourceStore,
 		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
@@ -147,7 +147,7 @@ func TestScheduleForExpiring_ScheduleErrorContinue(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	now := time.Now()
 	threshold := now.Add(domain.NotificationLeadTime)
-	
+
 	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
 		UserID: "u_1", Source: domain.SourceStore,
 		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,
@@ -174,10 +174,10 @@ func TestScheduleForExpiring_ScheduleDuplicate(t *testing.T) {
 	notifRepo := newMockNotifRepo()
 	now := time.Now()
 	threshold := now.Add(domain.NotificationLeadTime)
-	
+
 	// Configure to return false (duplicate)
 	notifRepo.newScheduleReturnFalse = true
-	
+
 	entRepo.entitlements["u_1:STORE"] = &domain.Entitlement{
 		UserID: "u_1", Source: domain.SourceStore,
 		Active: true, ExpiresAt: &threshold, LastChangedAt: now, CreatedAt: now,

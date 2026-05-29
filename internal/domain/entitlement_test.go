@@ -14,13 +14,13 @@ func TestApplyStoreEvent(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		entitlement  *Entitlement
-		event        StoreEvent
-		wantActive   bool
-		wantReason   string
-		wantChanged  bool
-		wantErr      bool
+		name          string
+		entitlement   *Entitlement
+		event         StoreEvent
+		wantActive    bool
+		wantReason    string
+		wantChanged   bool
+		wantErr       bool
 		wantExpiresAt *time.Time
 	}{
 		{
@@ -237,10 +237,10 @@ func TestApplyStoreEvent(t *testing.T) {
 				EventTimeMs: 1716700000000,
 				ProductID:   "premium_monthly",
 			},
-			wantActive:  true,
-			wantReason:  "UN_CANCELLATION",
-			wantChanged: true,
-			wantErr:     false,
+			wantActive:    true,
+			wantReason:    "UN_CANCELLATION",
+			wantChanged:   true,
+			wantErr:       false,
 			wantExpiresAt: ptrTime(time.UnixMilli(1716700000000).Add(30 * 24 * time.Hour)),
 		},
 		{
@@ -282,7 +282,7 @@ func TestApplyStoreEvent(t *testing.T) {
 			wantErr:     true,
 		},
 		{
-			name: "UN_CANCELLATION creates new entitlement",
+			name:        "UN_CANCELLATION creates new entitlement",
 			entitlement: nil,
 			event: StoreEvent{
 				EventID:     "evt_008",
@@ -291,10 +291,10 @@ func TestApplyStoreEvent(t *testing.T) {
 				EventTimeMs: 1716700000000,
 				ProductID:   "premium_yearly",
 			},
-			wantActive:  true,
-			wantReason:  "UN_CANCELLATION",
-			wantChanged: true,
-			wantErr:     false,
+			wantActive:    true,
+			wantReason:    "UN_CANCELLATION",
+			wantChanged:   true,
+			wantErr:       false,
 			wantExpiresAt: ptrTime(time.UnixMilli(1716700000000).Add(365 * 24 * time.Hour)),
 		},
 		{
@@ -331,7 +331,7 @@ func TestApplyStoreEvent(t *testing.T) {
 			assert.Equal(t, tt.event.UserID, result.UserID)
 			assert.Equal(t, SourceStore, result.Source)
 			assert.Equal(t, tt.event.EventTimeMs, result.LastEventTimeMs, "LastEventTimeMs should match event EventTimeMs")
-			
+
 			if tt.wantExpiresAt != nil {
 				require.NotNil(t, result.ExpiresAt, "ExpiresAt should not be nil for this test case")
 				assert.Equal(t, *tt.wantExpiresAt, *result.ExpiresAt, "ExpiresAt should be computed from product duration")
@@ -379,8 +379,8 @@ func TestResolveEntitlements(t *testing.T) {
 		wantActive bool
 	}{
 		{
-			name:       "multiple active picks STORE",
-			rows:       []Entitlement{
+			name: "multiple active picks STORE",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceCarrier, Active: true, LastChangedAt: fixedNow},
 				{UserID: "u_1", Source: SourceStore, Active: true, LastChangedAt: fixedNow},
 				{UserID: "u_1", Source: SourceMarketplace, Active: true, LastChangedAt: fixedNow},
@@ -389,16 +389,16 @@ func TestResolveEntitlements(t *testing.T) {
 			wantActive: true,
 		},
 		{
-			name:       "carrier only picks CARRIER",
-			rows:       []Entitlement{
+			name: "carrier only picks CARRIER",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceCarrier, Active: true, LastChangedAt: fixedNow},
 			},
 			wantSource: SourceCarrier,
 			wantActive: true,
 		},
 		{
-			name:       "store and marketplace active picks STORE",
-			rows:       []Entitlement{
+			name: "store and marketplace active picks STORE",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceMarketplace, Active: true, LastChangedAt: fixedNow},
 				{UserID: "u_1", Source: SourceStore, Active: true, LastChangedAt: fixedNow},
 			},
@@ -406,8 +406,8 @@ func TestResolveEntitlements(t *testing.T) {
 			wantActive: true,
 		},
 		{
-			name:       "none active returns NONE",
-			rows:       []Entitlement{
+			name: "none active returns NONE",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceStore, Active: false, Reason: "EXPIRATION", LastChangedAt: fixedNow.Add(-1 * time.Hour)},
 				{UserID: "u_1", Source: SourceCarrier, Active: false, Reason: "CARRIER_INACTIVE", LastChangedAt: fixedNow},
 			},
@@ -421,8 +421,8 @@ func TestResolveEntitlements(t *testing.T) {
 			wantActive: false,
 		},
 		{
-			name:       "marketplace active, store inactive picks MARKETPLACE",
-			rows:       []Entitlement{
+			name: "marketplace active, store inactive picks MARKETPLACE",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceStore, Active: false, LastChangedAt: fixedNow},
 				{UserID: "u_1", Source: SourceMarketplace, Active: true, LastChangedAt: fixedNow},
 			},
@@ -430,8 +430,8 @@ func TestResolveEntitlements(t *testing.T) {
 			wantActive: true,
 		},
 		{
-			name:       "none active picks most recently changed reason",
-			rows:       []Entitlement{
+			name: "none active picks most recently changed reason",
+			rows: []Entitlement{
 				{UserID: "u_1", Source: SourceStore, Active: false, Reason: "EXPIRATION", LastChangedAt: fixedNow.Add(-2 * time.Hour)},
 				{UserID: "u_1", Source: SourceCarrier, Active: false, Reason: "CARRIER_INACTIVE", LastChangedAt: fixedNow},
 			},

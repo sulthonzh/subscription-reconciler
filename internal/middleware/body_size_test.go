@@ -14,9 +14,9 @@ import (
 func TestBodySizeLimit_UnderLimit(t *testing.T) {
 	handler := BodySizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := make([]byte, r.ContentLength)
-		r.Body.Read(body)
+		_, _ = r.Body.Read(body)
 		w.WriteHeader(http.StatusOK)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 
 	body := strings.NewReader("hello")
@@ -89,10 +89,4 @@ type failingReader struct{}
 
 func (f *failingReader) Read(p []byte) (n int, err error) {
 	return 0, io.ErrUnexpectedEOF
-}
-
-type errorReader struct{}
-
-func (e *errorReader) Read(p []byte) (n int, err error) {
-	return 0, io.EOF
 }

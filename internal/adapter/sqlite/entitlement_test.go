@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
@@ -193,7 +193,7 @@ func TestUpsert_WithExpiresAt(t *testing.T) {
 	repo := NewEntitlementRepo(db)
 	ctx := context.Background()
 
-	expires := time.Now().UTC().Add(30*24*time.Hour).Truncate(time.Microsecond)
+	expires := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Microsecond)
 	ent := makeEntitlement("u1", domain.SourceStore, true)
 	ent.ExpiresAt = &expires
 	require.NoError(t, repo.Upsert(ctx, ent))
@@ -314,7 +314,7 @@ func TestGetExpiringBefore_ExpiringBeforeThreshold(t *testing.T) {
 	ctx := context.Background()
 
 	threshold := time.Now().UTC().Add(24 * time.Hour)
-	
+
 	earlyExpiry := threshold.Add(-2 * time.Hour)
 	ent1 := makeEntitlementWithExpires("u1", domain.SourceStore, true, earlyExpiry)
 	require.NoError(t, repo.Upsert(ctx, ent1))
@@ -323,7 +323,7 @@ func TestGetExpiringBefore_ExpiringBeforeThreshold(t *testing.T) {
 	ent2 := makeEntitlementWithExpires("u2", domain.SourceStore, true, lateExpiry)
 	require.NoError(t, repo.Upsert(ctx, ent2))
 
-	ent3 := makeEntitlementWithExpires("u3", domain.SourceStore, false, threshold.Add(-1 * time.Hour))
+	ent3 := makeEntitlementWithExpires("u3", domain.SourceStore, false, threshold.Add(-1*time.Hour))
 	require.NoError(t, repo.Upsert(ctx, ent3))
 
 	ent4 := makeEntitlement("u4", domain.SourceCarrier, true)
@@ -344,7 +344,7 @@ func TestGetExpiringBefore_ExpiringAfterThreshold(t *testing.T) {
 	ctx := context.Background()
 
 	threshold := time.Now().UTC().Add(24 * time.Hour)
-	
+
 	futureExpiry := threshold.Add(2 * time.Hour)
 	ent := makeEntitlementWithExpires("u1", domain.SourceStore, true, futureExpiry)
 	require.NoError(t, repo.Upsert(ctx, ent))
@@ -361,8 +361,8 @@ func TestGetExpiringBefore_InactiveEntitlement(t *testing.T) {
 	ctx := context.Background()
 
 	threshold := time.Now().UTC().Add(24 * time.Hour)
-	
-	ent := makeEntitlementWithExpires("u1", domain.SourceStore, false, threshold.Add(-2 * time.Hour))
+
+	ent := makeEntitlementWithExpires("u1", domain.SourceStore, false, threshold.Add(-2*time.Hour))
 	require.NoError(t, repo.Upsert(ctx, ent))
 
 	expiring, err := repo.GetExpiringBefore(ctx, threshold)
@@ -390,11 +390,11 @@ func TestGetExpiringBefore_MultipleExpiring(t *testing.T) {
 	ctx := context.Background()
 
 	threshold := time.Now().UTC().Add(24 * time.Hour)
-	
-	ent1 := makeEntitlementWithExpires("u1", domain.SourceStore, true, threshold.Add(-2 * time.Hour))
-	ent2 := makeEntitlementWithExpires("u2", domain.SourceMarketplace, true, threshold.Add(-1 * time.Hour))
-	ent3 := makeEntitlementWithExpires("u3", domain.SourceCarrier, true, threshold.Add(-30 * time.Minute))
-	
+
+	ent1 := makeEntitlementWithExpires("u1", domain.SourceStore, true, threshold.Add(-2*time.Hour))
+	ent2 := makeEntitlementWithExpires("u2", domain.SourceMarketplace, true, threshold.Add(-1*time.Hour))
+	ent3 := makeEntitlementWithExpires("u3", domain.SourceCarrier, true, threshold.Add(-30*time.Minute))
+
 	require.NoError(t, repo.Upsert(ctx, ent1))
 	require.NoError(t, repo.Upsert(ctx, ent2))
 	require.NoError(t, repo.Upsert(ctx, ent3))
@@ -402,7 +402,7 @@ func TestGetExpiringBefore_MultipleExpiring(t *testing.T) {
 	expiring, err := repo.GetExpiringBefore(ctx, threshold)
 	require.NoError(t, err)
 	require.Len(t, expiring, 3)
-	
+
 	for _, ent := range expiring {
 		assert.True(t, ent.Active)
 		assert.NotNil(t, ent.ExpiresAt)
@@ -529,7 +529,7 @@ func TestGetExpiringBefore_ExpiredEntitlement(t *testing.T) {
 
 	// Use a fixed time to avoid race conditions
 	fixedTime := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
-	
+
 	pastExpiry := fixedTime.Add(-2 * time.Hour)
 	ent := makeEntitlementWithExpires("u1", domain.SourceStore, true, pastExpiry)
 	require.NoError(t, repo.Upsert(ctx, ent))

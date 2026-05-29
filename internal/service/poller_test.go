@@ -82,8 +82,6 @@ func (m *mockPollLogRepo) ReleaseLock(_ context.Context, userID string) error {
 	return nil
 }
 
-
-
 func TestPollAll_ActiveUser(t *testing.T) {
 	entRepo := newMockEntRepo()
 	now := time.Now()

@@ -13,7 +13,7 @@ func TestCheckPlan_Active(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "u_42", r.URL.Query().Get("userId"))
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"active"}`))
+		_, _ = w.Write([]byte(`{"status":"active"}`))
 	}))
 	defer server.Close()
 
@@ -27,7 +27,7 @@ func TestCheckPlan_Active(t *testing.T) {
 func TestCheckPlan_Inactive(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"inactive"}`))
+		_, _ = w.Write([]byte(`{"status":"inactive"}`))
 	}))
 	defer server.Close()
 
@@ -62,7 +62,7 @@ func TestCheckPlan_NetworkError(t *testing.T) {
 func TestCheckPlan_InvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`not json`))
+		_, _ = w.Write([]byte(`not json`))
 	}))
 	defer server.Close()
 
@@ -76,7 +76,7 @@ func TestCheckPlan_InvalidJSON(t *testing.T) {
 func TestCheckPlan_CancelledContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"active"}`))
+		_, _ = w.Write([]byte(`{"status":"active"}`))
 	}))
 	defer server.Close()
 

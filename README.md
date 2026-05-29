@@ -117,7 +117,7 @@ make clean          # Remove build artifacts and DB files
 flowchart TB
     subgraph drivers["Driving Adapters (Inbound)"]
         direction TB
-        MW["Middleware Stack<br/>RequestID → RealIP → RateLimiter<br/>BodySizeLimit → CORS → Logger → Recoverer"]
+        MW["Middleware Stack<br/>RequestID → RateLimiter<br/>BodySizeLimit → CORS → Logger → Recoverer"]
         HTTP["HTTP Handler<br/><i>chi router</i>"]
         MW --> HTTP
     end
@@ -175,7 +175,7 @@ sequenceDiagram
     participant R as SQLite Repository
 
     C->>MW: HTTP Request
-    MW->>MW: RequestID → RealIP → RateLimiter
+    MW->>MW: RequestID → RateLimiter
     MW->>MW: BodySizeLimit → CORS → Logger → Recoverer
     MW->>H: Forward request
     H->>H: Validate & parse payload
@@ -667,8 +667,7 @@ Applied in order (outermost first):
 ```mermaid
 flowchart LR
     REQ["Incoming<br/>Request"] --> RID["RequestID"]
-    RID --> RIP["RealIP"]
-    RIP --> RL["RateLimiter<br/><i>100 req/min per IP</i>"]
+    RID --> RL["RateLimiter<br/><i>100 req/min per IP</i>"]
     RL --> BSL["BodySizeLimit<br/><i>≤ 1 MB</i>"]
     BSL --> CORS["CORS"]
     CORS --> LOG["RequestLogger"]
@@ -682,7 +681,6 @@ flowchart LR
 | Middleware | Package | Description |
 |------------|---------|-------------|
 | **RequestID** | chi | Generates unique `X-Request-Id` header for request tracing |
-| **RealIP** | chi | Resolves real client IP from `X-Forwarded-For` / `X-Real-Ip` headers |
 | **RateLimiter** | `middleware/` | Per-IP rate limiting (100 req/min). Uses `net.SplitHostPort` to extract IP from `RemoteAddr` |
 | **BodySizeLimit** | `middleware/` | Rejects requests with body > 1MB via `io.LimitReader` + `io.ReadAll` |
 | **CORS** | `middleware/` | Custom CORS — allows all origins, GET/POST/OPTIONS, Content-Type + Authorization headers |

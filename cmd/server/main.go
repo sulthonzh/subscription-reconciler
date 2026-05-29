@@ -69,7 +69,6 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(mw.RequestID)
-	r.Use(mw.RealIP)
 	r.Use(appMiddleware.RateLimiter())
 	r.Use(appMiddleware.BodySizeLimit)
 	r.Use(appMiddleware.CORS)
@@ -78,7 +77,9 @@ func main() {
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			slog.Error("failed to encode health response", "error", err)
+		}
 	})
 
 	r.Mount("/", handler.Routes())
@@ -210,7 +211,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	}
 
 	// Idempotent column additions for existing databases.
-	db.Exec("ALTER TABLE entitlements ADD COLUMN last_event_time_ms INTEGER NOT NULL DEFAULT 0")
+	if _, err := db.Exec("ALTER TABLE entitlements ADD COLUMN last_event_time_ms INTEGER NOT NULL DEFAULT 0"); err != nil {
+		logger.Warn("column last_event_time_ms may already exist", "error", err)
+	}
 
 	logger.Info("migrations applied")
 	return nil

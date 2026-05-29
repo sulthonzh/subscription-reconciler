@@ -15,7 +15,7 @@ func TestRequestLogger_LogsAndCallsNext(t *testing.T) {
 	mw := RequestLogger(logger)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test response"))
+		_, _ = w.Write([]byte("test response"))
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)

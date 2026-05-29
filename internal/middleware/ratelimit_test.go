@@ -473,4 +473,3 @@ func TestRateLimiter_WindowResetInNewLimiter(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
 }
-

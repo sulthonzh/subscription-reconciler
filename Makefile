@@ -7,7 +7,7 @@ test:
 	go test -race -cover ./...
 
 lint:
-	@echo "no linter configured yet"
+	golangci-lint run ./...
 
 run:
 	go run ./cmd/server

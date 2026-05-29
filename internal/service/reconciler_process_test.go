@@ -308,11 +308,11 @@ func TestProcessStoreEvent_BillingIssueWithExpiration(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_billing_issue",
-		UserID:        "u_42",
-		Type:          domain.EventBillingIssue,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_billing_issue",
+		UserID:      "u_42",
+		Type:        domain.EventBillingIssue,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -331,7 +331,7 @@ func TestProcessStoreEvent_BillingIssueWithExpiration(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process billing issue event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for billing issue")
 }
 
@@ -344,11 +344,11 @@ func TestProcessStoreEvent_ExpirationButNoChanges(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_billing_issue",
-		UserID:        "u_42",
-		Type:          domain.EventBillingIssue,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_billing_issue",
+		UserID:      "u_42",
+		Type:        domain.EventBillingIssue,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -367,7 +367,7 @@ func TestProcessStoreEvent_ExpirationButNoChanges(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification when no changes")
 	assert.Len(t, auditRepo.entries, 0, "should not write audit when no changes")
 }
@@ -381,11 +381,11 @@ func TestProcessStoreEvent_BillingIssueWithChanges(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_billing_change",
-		UserID:        "u_42",
-		Type:          domain.EventBillingIssue,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_billing_change",
+		UserID:      "u_42",
+		Type:        domain.EventBillingIssue,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -404,7 +404,7 @@ func TestProcessStoreEvent_BillingIssueWithChanges(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for billing issue")
 	assert.Len(t, auditRepo.entries, 1, "should write audit when reason changes")
 }
@@ -418,11 +418,11 @@ func TestProcessStoreEvent_ComplexScenarioWithAllConditions(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_complex",
-		UserID:        "u_42",
-		Type:          domain.EventCancellation,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_complex",
+		UserID:      "u_42",
+		Type:        domain.EventCancellation,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -441,7 +441,7 @@ func TestProcessStoreEvent_ComplexScenarioWithAllConditions(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 1, "should schedule notification for cancellation")
 	assert.Len(t, auditRepo.entries, 1, "should write audit for cancellation")
 }
@@ -455,11 +455,11 @@ func TestProcessStoreEvent_RenewalNoChange(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_renewal_no_change",
-		UserID:        "u_42",
-		Type:          domain.EventRenewal,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_renewal_no_change",
+		UserID:      "u_42",
+		Type:        domain.EventRenewal,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -478,7 +478,7 @@ func TestProcessStoreEvent_RenewalNoChange(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification when no change")
 	assert.Len(t, auditRepo.entries, 0, "should not write audit when no change")
 }
@@ -492,11 +492,11 @@ func TestProcessStoreEvent_ChangedButNoNotification(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_no_notif",
-		UserID:        "u_42",
-		Type:          domain.EventCancellation,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_no_notif",
+		UserID:      "u_42",
+		Type:        domain.EventCancellation,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	existingEnt := &domain.Entitlement{
@@ -515,7 +515,7 @@ func TestProcessStoreEvent_ChangedButNoNotification(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for cancellation")
 	assert.Len(t, auditRepo.entries, 1, "should write audit for cancellation")
 }
@@ -529,11 +529,11 @@ func TestProcessStoreEvent_UnchangedButNoAudit(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_billing_issue_same_reason",
-		UserID:        "u_42",
-		Type:          domain.EventBillingIssue,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_billing_issue_same_reason",
+		UserID:      "u_42",
+		Type:        domain.EventBillingIssue,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	expiresAt := now.AddDate(0, 1, 0)
@@ -553,7 +553,7 @@ func TestProcessStoreEvent_UnchangedButNoAudit(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for billing issue")
 	assert.Len(t, auditRepo.entries, 0, "should not write audit when reason doesn't change")
 }
@@ -567,11 +567,11 @@ func TestProcessStoreEvent_ChangeButInactive(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_expire_inactive",
-		UserID:        "u_42",
-		Type:          domain.EventExpiration,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_expire_inactive",
+		UserID:      "u_42",
+		Type:        domain.EventExpiration,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	expiresAt := now.AddDate(0, -1, 0)
@@ -591,7 +591,7 @@ func TestProcessStoreEvent_ChangeButInactive(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for expiration")
 	assert.Len(t, auditRepo.entries, 1, "should write audit for expiration")
 }
@@ -605,11 +605,11 @@ func TestProcessStoreEvent_EntitiyUpsertError(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_upsert_fail",
-		UserID:        "u_42",
-		Type:          domain.EventInitialPurchase,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_upsert_fail",
+		UserID:      "u_42",
+		Type:        domain.EventInitialPurchase,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	expiresAt := now.AddDate(0, 1, 0)
@@ -631,7 +631,7 @@ func TestProcessStoreEvent_EntitiyUpsertError(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, processed, "should not process event when upsert fails")
 	require.Contains(t, err.Error(), "upsert failed")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification on upsert error")
 	assert.Len(t, auditRepo.entries, 0, "should not write audit on upsert error")
 }
@@ -645,11 +645,11 @@ func TestProcessStoreEvent_BillingIssueWithReasonChange(t *testing.T) {
 	r := NewReconciler(entRepo, newMockEventRepo(), notifRepo, auditRepo, mockTxProvider{}, testLogger())
 
 	event := domain.StoreEvent{
-		EventID:       "evt_billing_reason_change",
-		UserID:        "u_42",
-		Type:          domain.EventBillingIssue,
-		EventTimeMs:   1716700000000,
-		ProductID:     "premium_monthly",
+		EventID:     "evt_billing_reason_change",
+		UserID:      "u_42",
+		Type:        domain.EventBillingIssue,
+		EventTimeMs: 1716700000000,
+		ProductID:   "premium_monthly",
 	}
 
 	expiresAt := now.AddDate(0, 1, 0)
@@ -669,7 +669,7 @@ func TestProcessStoreEvent_BillingIssueWithReasonChange(t *testing.T) {
 	processed, err := r.ProcessStoreEvent(context.Background(), event)
 	require.NoError(t, err)
 	assert.True(t, processed, "should process event")
-	
+
 	assert.Len(t, notifRepo.scheduled, 0, "should not schedule notification for billing issue")
 	assert.Len(t, auditRepo.entries, 1, "should write audit when reason changes for billing issue")
 }

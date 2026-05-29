@@ -49,7 +49,7 @@ func TestOpen_PragmaError(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	require.NoError(t, os.Chmod(dbPath, 0444))
-	defer os.Chmod(dbPath, 0644)
+	defer func() { _ = os.Chmod(dbPath, 0644) }()
 
 	db, err := Open(dbPath)
 	if db != nil {

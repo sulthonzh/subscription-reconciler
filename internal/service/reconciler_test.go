@@ -8,23 +8,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
 
 type mockEntitlementRepo struct {
-	entitlements            map[string]*domain.Entitlement
-	upserted               []domain.Entitlement
-	updated                []updateCall
-	expireOverdueCount     int
-	getByUserAndSourceErr  error
-	getByUserErr           error
-	upsertErr              error
-	getActiveBySourceErr   error
+	entitlements          map[string]*domain.Entitlement
+	upserted              []domain.Entitlement
+	updated               []updateCall
+	expireOverdueCount    int
+	getByUserAndSourceErr error
+	getByUserErr          error
+	upsertErr             error
+	getActiveBySourceErr  error
 	updateActiveErr       error
 	expireOverdueErr      error
-	getExpiringBeforeErr   error
+	getExpiringBeforeErr  error
 }
 
 type updateCall struct {
@@ -153,14 +153,14 @@ func (m *mockStoreEventRepo) Insert(_ context.Context, event domain.StoreEvent) 
 }
 
 type mockNotificationRepo struct {
-	scheduled   []domain.Notification
-	due         []domain.Notification
-	marked      []int64
-	scheduleErr error
-	findDueErr  error
-	markSentErr error
+	scheduled              []domain.Notification
+	due                    []domain.Notification
+	marked                 []int64
+	scheduleErr            error
+	findDueErr             error
+	markSentErr            error
 	newScheduleReturnFalse bool
-	firstScheduleFail     bool
+	firstScheduleFail      bool
 }
 
 func newMockNotifRepo() *mockNotificationRepo {
@@ -200,8 +200,8 @@ func (m *mockNotificationRepo) MarkSent(_ context.Context, id int64, now time.Ti
 }
 
 type mockAuditLogRepo struct {
-	entries     []domain.AuditEntry
-	insertErr   error
+	entries      []domain.AuditEntry
+	insertErr    error
 	getByUserErr error
 }
 
@@ -253,25 +253,25 @@ func baseEvent() domain.StoreEvent {
 func TestGetTimeline_WithAuditEntries(t *testing.T) {
 	auditRepo := newMockAuditRepo()
 	now := time.Now()
-	
+
 	auditRepo.entries = []domain.AuditEntry{
 		{
-			ID:         1,
-			UserID:     "u_42",
-			TriggerID:  "evt_001",
-			Source:     domain.SourceStore,
+			ID:            1,
+			UserID:        "u_42",
+			TriggerID:     "evt_001",
+			Source:        domain.SourceStore,
 			PreviousState: "{}",
 			NextState:     `{"active":true,"source":"STORE","reason":"INITIAL_PURCHASE"}`,
-			CreatedAt:   now,
+			CreatedAt:     now,
 		},
 		{
-			ID:         2,
-			UserID:     "u_42",
-			TriggerID:  "evt_002",
-			Source:     domain.SourceStore,
+			ID:            2,
+			UserID:        "u_42",
+			TriggerID:     "evt_002",
+			Source:        domain.SourceStore,
 			PreviousState: `{"active":true,"source":"STORE","reason":"INITIAL_PURCHASE"}`,
 			NextState:     `{"active":false,"source":"STORE","reason":"EXPIRATION"}`,
-			CreatedAt:   now.Add(1 * time.Hour),
+			CreatedAt:     now.Add(1 * time.Hour),
 		},
 	}
 

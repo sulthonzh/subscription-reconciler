@@ -167,9 +167,9 @@ func (m *mockNotifRepo) MarkSent(_ context.Context, id int64, now time.Time) err
 }
 
 type mockAuditRepo struct {
-	entries    []domain.AuditEntry
-	returnData []domain.AuditEntry
-	insertErr  error
+	entries      []domain.AuditEntry
+	returnData   []domain.AuditEntry
+	insertErr    error
 	getByUserErr error
 }
 
@@ -222,7 +222,7 @@ func testLogger() *slog.Logger {
 func executeRequest(h *Handler, method, path string, body interface{}) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
 	if body != nil {
-		json.NewEncoder(&buf).Encode(body)
+		_ = json.NewEncoder(&buf).Encode(body)
 	}
 
 	req := httptest.NewRequest(method, path, &buf)
@@ -255,7 +255,7 @@ func TestHandleStoreWebhook_Valid(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "processed", resp["status"])
 	assert.Len(t, entRepo.upserted, 1)
 }
@@ -278,7 +278,7 @@ func TestHandleStoreWebhook_Duplicate(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr2.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr2.Body).Decode(&resp)
+	_ = json.NewDecoder(rr2.Body).Decode(&resp)
 	assert.Equal(t, "ignored", resp["status"])
 }
 
@@ -304,7 +304,7 @@ func TestHandleStoreWebhook_InvalidEventType(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "invalid event type", resp["error"])
 }
 
@@ -336,7 +336,7 @@ func TestHandleMarketplaceRevoke_Valid(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp map[string]int
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, 1, resp["revoked"])
 	assert.Equal(t, 1, resp["skipped"])
 }
@@ -367,7 +367,7 @@ func TestHandleGetEntitlement_Found(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp entitlementResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.True(t, resp.Active)
 	assert.Equal(t, "STORE", resp.Source)
 	assert.NotNil(t, resp.ExpiresAt)
@@ -382,7 +382,7 @@ func TestHandleGetEntitlement_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp entitlementResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.False(t, resp.Active)
 	assert.Equal(t, "NONE", resp.Source)
 	assert.Nil(t, resp.ExpiresAt)
@@ -402,7 +402,7 @@ func TestRoutes_ReturnsRouter(t *testing.T) {
 func TestHandleStoreWebhook_UnknownProduct(t *testing.T) {
 	entRepo := newEntRepo()
 	eventRepo := newEventRepo()
-	
+
 	r := service.NewReconciler(entRepo, eventRepo, newNotifRepo(), &mockAuditRepo{}, mockTxProvider{}, testLogger())
 	h := New(r)
 
@@ -418,7 +418,7 @@ func TestHandleStoreWebhook_UnknownProduct(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "unknown product ID", resp["error"])
 }
 
@@ -442,7 +442,7 @@ func TestHandleStoreWebhook_InternalError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "internal error", resp["error"])
 }
 
@@ -461,7 +461,7 @@ func TestHandleMarketplaceRevoke_InternalError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "internal error", resp["error"])
 }
 
@@ -483,7 +483,7 @@ func TestHandleGetEntitlement_InternalError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "internal error", resp["error"])
 }
 
@@ -500,7 +500,7 @@ func TestHandleGetEntitlement_WithLastChangedAt(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp entitlementResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.True(t, resp.Active)
 	assert.NotNil(t, resp.LastChangedAt)
 	assert.Nil(t, resp.Reason, "empty reason should not be included")
@@ -524,7 +524,7 @@ func TestHandleGetTimeline_ReturnsEntries(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp []map[string]interface{}
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Len(t, resp, 2)
 	assert.Equal(t, "evt_001", resp[0]["triggerId"])
 	assert.Equal(t, "STORE", resp[0]["source"])
@@ -537,7 +537,7 @@ func TestHandleGetTimeline_Empty(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp []interface{}
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Empty(t, resp)
 }
 
@@ -549,20 +549,20 @@ func TestHandleGetTimeline_ErrorFromReconciler(t *testing.T) {
 	auditRepo.getByUserErr = fmt.Errorf("database error")
 
 	r := service.NewReconciler(entRepo, eventRepo, notifRepo, auditRepo, mockTxProvider{}, testLogger())
-	
+
 	_, err := r.GetTimeline(context.Background(), "u_42")
-	
+
 	h := New(r)
 
 	rr := executeRequest(h, http.MethodGet, "/users/u_42/timeline", nil)
-	
+
 	fmt.Printf("Response status: %d\n", rr.Code)
 	fmt.Printf("Response body: %s\n", rr.Body.String())
-	
+
 	if err != nil {
 		assert.Equal(t, http.StatusInternalServerError, rr.Code)
 		var resp map[string]string
-		json.NewDecoder(rr.Body).Decode(&resp)
+		_ = json.NewDecoder(rr.Body).Decode(&resp)
 		assert.Equal(t, "internal error", resp["error"])
 	} else {
 		t.Errorf("Expected service to return error, but got none")
@@ -576,7 +576,7 @@ func TestHandleGetTimeline_MissingUserID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "user id required", resp["error"])
 }
 
@@ -591,7 +591,7 @@ func TestHandleGetEntitlement_ErrorFromReconciler(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "internal error", resp["error"])
 }
 
@@ -602,6 +602,6 @@ func TestHandleGetEntitlement_EmptyUserID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 
 	var resp map[string]string
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
 	assert.Equal(t, "user id required", resp["error"])
 }

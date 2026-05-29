@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
 
 func TestStoreEventInsert_New(t *testing.T) {

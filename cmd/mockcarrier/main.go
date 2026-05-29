@@ -24,7 +24,7 @@ func main() {
 		if userID == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "userId is required"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "userId is required"}) //nolint:errcheck
 			return
 		}
 
@@ -51,7 +51,7 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(httpStatus)
-		json.NewEncoder(w).Encode(map[string]string{"status": status})
+		json.NewEncoder(w).Encode(map[string]string{"status": status}) //nolint:errcheck
 	})
 
 	srv := &http.Server{

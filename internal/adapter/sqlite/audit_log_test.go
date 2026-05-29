@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/sulthonzh/subscription-reconciler/internal/domain"
 )
 
 func TestAuditLogInsert(t *testing.T) {
