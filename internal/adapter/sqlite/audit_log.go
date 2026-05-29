@@ -42,7 +42,7 @@ func (r *AuditLogRepo) GetByUser(ctx context.Context, userID string) ([]domain.A
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []domain.AuditEntry
 	for rows.Next() {

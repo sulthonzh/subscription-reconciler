@@ -22,10 +22,10 @@ func Open(dbPath string) (*sql.DB, error) {
 		"PRAGMA strict = ON",
 	}
 	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			db.Close()
-			return nil, err
-		}
+	if _, err := db.Exec(p); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	}
 
 	return db, nil

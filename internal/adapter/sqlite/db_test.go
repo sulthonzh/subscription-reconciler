@@ -17,7 +17,7 @@ func TestOpen_Success(t *testing.T) {
 
 	db, err := Open(dbPath)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify pragmas were applied
 	var mode string
@@ -32,7 +32,7 @@ func TestOpen_InvalidPath(t *testing.T) {
 	// Path in nonexistent deeply nested read-only location
 	db, err := Open("/nonexistent/deeply/nested/path/test.db")
 	if db != nil {
-		db.Close()
+		_ = db.Close()
 	}
 	// Open may not error immediately (SQLite defers file creation), but we test it doesn't panic
 	_ = err
@@ -53,7 +53,7 @@ func TestOpen_PragmaError(t *testing.T) {
 
 	db, err := Open(dbPath)
 	if db != nil {
-		db.Close()
+		_ = db.Close()
 	}
 	require.Error(t, err)
 }
@@ -63,7 +63,7 @@ func TestOpen_InMemory(t *testing.T) {
 
 	db, err := Open(":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var result int
 	err = db.QueryRow("SELECT 1").Scan(&result)

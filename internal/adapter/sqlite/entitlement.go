@@ -43,7 +43,7 @@ func (r *EntitlementRepo) GetByUser(ctx context.Context, userID string) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanEntitlements(rows)
 }
@@ -81,7 +81,7 @@ func (r *EntitlementRepo) GetActiveBySource(ctx context.Context, source domain.S
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanEntitlements(rows)
 }
@@ -120,6 +120,6 @@ func (r *EntitlementRepo) GetExpiringBefore(ctx context.Context, before time.Tim
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanEntitlements(rows)
 }
