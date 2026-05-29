@@ -11,6 +11,9 @@ linters:
     - unused
     - ineffassign
     - misspell
+
+formatters:
+  enable:
     - gofmt
     - goimports
 
