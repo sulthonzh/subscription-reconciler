@@ -244,7 +244,7 @@ func TestIntegration_MarketplaceRevoke(t *testing.T) {
 		"userIds": []string{"u_50"},
 	}
 	resp2 := doRequest(t, router, http.MethodPost, "/webhooks/marketplace/revoke", revokeReq)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
