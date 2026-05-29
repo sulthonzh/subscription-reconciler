@@ -16,7 +16,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	migrationSQL, err := os.ReadFile("../../../migrations/001_create_tables.up.sql")
 	require.NoError(t, err)

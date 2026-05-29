@@ -42,7 +42,7 @@ func main() {
 		logger.Error("failed to open database", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)

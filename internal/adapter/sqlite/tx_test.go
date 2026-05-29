@@ -17,7 +17,7 @@ func TestNewTxProvider(t *testing.T) {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	txProvider := NewTxProvider(db)
 	require.NotNil(t, txProvider)

@@ -46,7 +46,7 @@ func (r *NotificationRepo) FindDue(ctx context.Context, now time.Time, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []domain.Notification
 	for rows.Next() {

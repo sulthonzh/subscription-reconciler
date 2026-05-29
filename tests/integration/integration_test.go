@@ -75,7 +75,7 @@ func setupIntegration(t *testing.T) (*httphandler.Handler, *sql.DB) {
 
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
 	require.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -168,7 +168,7 @@ func TestIntegration_StoreWebhook_CreatesEntitlement(t *testing.T) {
 	}
 
 	resp := doRequest(t, router, http.MethodPost, "/webhooks/store", webhook)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -178,7 +178,7 @@ func TestIntegration_StoreWebhook_CreatesEntitlement(t *testing.T) {
 
 	// GET entitlement to verify
 	resp2 := doRequest(t, router, http.MethodGet, "/users/u_42/entitlement", nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
@@ -203,7 +203,7 @@ func TestIntegration_StoreWebhook_DuplicateIgnored(t *testing.T) {
 
 	// First request: processed
 	resp1 := doRequest(t, router, http.MethodPost, "/webhooks/store", webhook)
-	defer resp1.Body.Close()
+	defer func() { _ = resp1.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp1.StatusCode)
 
 	var result1 map[string]string
@@ -212,7 +212,7 @@ func TestIntegration_StoreWebhook_DuplicateIgnored(t *testing.T) {
 
 	// Second request with same eventId: ignored
 	resp2 := doRequest(t, router, http.MethodPost, "/webhooks/store", webhook)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
 	var result2 map[string]string
@@ -233,7 +233,7 @@ func TestIntegration_MarketplaceRevoke(t *testing.T) {
 		"productId":   "premium_monthly",
 	}
 	resp := doRequest(t, router, http.MethodPost, "/webhooks/store", storeWebhook)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Manually insert a MARKETPLACE entitlement
@@ -255,7 +255,7 @@ func TestIntegration_MarketplaceRevoke(t *testing.T) {
 
 	// Verify entitlement still shows STORE as active (STORE > MARKETPLACE priority)
 	resp3 := doRequest(t, router, http.MethodGet, "/users/u_50/entitlement", nil)
-	defer resp3.Body.Close()
+	defer func() { _ = resp3.Body.Close() }()
 
 	var ent map[string]interface{}
 	require.NoError(t, json.NewDecoder(resp3.Body).Decode(&ent))
@@ -276,12 +276,12 @@ func TestIntegration_GetTimeline(t *testing.T) {
 	}
 
 	resp := doRequest(t, router, http.MethodPost, "/webhooks/store", webhook)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// GET timeline
 	resp2 := doRequest(t, router, http.MethodGet, "/users/u_60/timeline", nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
@@ -307,7 +307,7 @@ func TestIntegration_StoreWebhook_Expiration(t *testing.T) {
 		"productId":   "premium_monthly",
 	}
 	resp := doRequest(t, router, http.MethodPost, "/webhooks/store", purchase)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Then: send EXPIRATION event
@@ -319,7 +319,7 @@ func TestIntegration_StoreWebhook_Expiration(t *testing.T) {
 		"productId":   "premium_monthly",
 	}
 	resp2 := doRequest(t, router, http.MethodPost, "/webhooks/store", expiration)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp2.StatusCode)
 
@@ -329,7 +329,7 @@ func TestIntegration_StoreWebhook_Expiration(t *testing.T) {
 
 	// GET entitlement → should be inactive with EXPIRED reason
 	resp3 := doRequest(t, router, http.MethodGet, "/users/u_70/entitlement", nil)
-	defer resp3.Body.Close()
+	defer func() { _ = resp3.Body.Close() }()
 
 	var ent map[string]interface{}
 	require.NoError(t, json.NewDecoder(resp3.Body).Decode(&ent))

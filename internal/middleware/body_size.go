@@ -14,7 +14,7 @@ func BodySizeLimit(next http.Handler) http.Handler {
 		if r.Body != nil {
 			limited := io.LimitReader(r.Body, int64(maxBodySize)+1)
 			data, err := io.ReadAll(limited)
-			r.Body.Close()
+			_ = r.Body.Close()
 			if err != nil {
 				http.Error(w, "failed to read request body", http.StatusBadRequest)
 				return
