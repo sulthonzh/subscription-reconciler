@@ -130,7 +130,6 @@ func ResolveEntitlements(rows []Entitlement) Entitlement {
 		return Entitlement{Source: SourceNone}
 	}
 
-	// Build a set of active sources for priority lookup.
 	activeBySource := make(map[Source]Entitlement, len(rows))
 	for _, row := range rows {
 		if row.Active {
@@ -138,7 +137,6 @@ func ResolveEntitlements(rows []Entitlement) Entitlement {
 		}
 	}
 
-	// Pick highest-priority active source.
 	for _, src := range sourcePriority {
 		if ent, ok := activeBySource[src]; ok {
 			return ent

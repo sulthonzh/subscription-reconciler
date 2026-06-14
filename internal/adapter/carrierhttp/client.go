@@ -38,10 +38,6 @@ func (c *Client) CheckPlan(ctx context.Context, userID string) (string, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusServiceUnavailable {
-		return "api_error", nil
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		return "api_error", nil
 	}
