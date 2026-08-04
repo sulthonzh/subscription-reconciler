@@ -25,3 +25,18 @@ coverage*
 .omo/
 docs/
 .playwright-mcp/
+# Cross-platform
+.env
+.env.*
+*.log
+*.tgz
+
+# Python (for any tooling)
+__pycache__/
+.venv/
+*.egg-info/
+.mypy_cache/
+
+# Go build artifacts
+*.o
+*.test
