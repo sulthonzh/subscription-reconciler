@@ -1,0 +1,32 @@
+name: deploy
+on:
+  push:
+    branches: [main, develop, staging]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join tailnet
+        run: |
+          curl -fsSL https://pkgs.tailscale.com/stable/tailscale_1.102.4_amd64.tgz -o /tmp/ts.tgz
+          sudo tar xzf /tmp/ts.tgz -C /tmp
+          sudo sh -c '/tmp/tailscale_1.102.4_amd64/tailscaled > /tmp/tailscaled.log 2>&1 &'
+          sleep 3
+          sudo /tmp/tailscale_1.102.4_amd64/tailscale up --authkey="${{ secrets.TS_AUTH_KEY }}" --hostname=gh-deploy-reconciler --accept-dns=false --timeout=2m
+      - name: Deploy on svr1
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SVR1_HOST }}
+          username: ${{ secrets.SVR1_USER }}
+          key: ${{ secrets.SVR1_SSH_KEY }}
+          script: |
+            case "${{ github.ref_name }}" in
+              main)    DIR=/srv/apps/reconciler ;;
+              develop) DIR=/srv/apps/reconciler-dev ;;
+              staging) DIR=/srv/apps/reconciler-stg ;;
+            esac
+            cd $DIR
+            git fetch -q origin
+            git reset -q --hard origin/${{ github.ref_name }}
+            docker compose -f docker-compose.env.yml up -d --build
+            docker image prune -f
