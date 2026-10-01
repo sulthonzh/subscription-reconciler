@@ -4,13 +4,5 @@ on:
     branches: [main, develop, staging]
 jobs:
   deploy:
-    runs-on: [self-hosted, svr1]  # runner IS svr1: local deploy, zero billed minutes
-    steps:
-      - name: Deploy on svr1 (local)
-        run: |
-          case "${{ github.ref_name }}" in
-            main)    DIR=/srv/apps/reconciler BR=main ;;
-            develop) DIR=/srv/apps/reconciler-dev BR=develop ;;
-            staging) DIR=/srv/apps/reconciler-stg BR=staging ;;
-          esac
-          sudo /usr/local/bin/svr1-deploy.sh "$DIR" "$BR"
+    uses: sulthonzh/deploy-framework/.github/workflows/deploy.yml@v1
+    secrets: inherit
