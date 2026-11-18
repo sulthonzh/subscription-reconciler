@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,6 +32,15 @@ func main() {
 	port := envOrDefault("PORT", "8080")
 	dbPath := envOrDefault("DB_PATH", "entitlements.db")
 	carrierURL := envOrDefault("CARRIER_URL", "http://localhost:8081")
+	webhookToken, err := loadWebhookToken(os.Getenv("WEBHOOK_AUTH_TOKEN"), os.Getenv("ALLOW_INSECURE_TEST_WEBHOOKS"))
+	if err != nil {
+		logger.Error("insecure webhook configuration", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if webhookToken == "" {
+		logger.Warn("webhook authentication is fail-closed under explicit test override")
+	}
+	allowedOrigins := appMiddleware.ParseCORSAllowedOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
 
 	logger.Info("starting server",
 		slog.String("port", port),
@@ -37,9 +48,9 @@ func main() {
 		slog.String("carrier_url", carrierURL),
 	)
 
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		logger.Error("failed to open database", slog.String("error", err.Error()))
+	db, dbErr := sql.Open("sqlite", dbPath)
+	if dbErr != nil {
+		logger.Error("failed to open database", slog.String("error", dbErr.Error()))
 		os.Exit(1)
 	}
 	defer func() { _ = db.Close() }()
@@ -71,7 +82,7 @@ func main() {
 	r.Use(mw.RequestID)
 	r.Use(appMiddleware.RateLimiter())
 	r.Use(appMiddleware.BodySizeLimit)
-	r.Use(appMiddleware.CORS)
+	r.Use(appMiddleware.CORS(allowedOrigins...))
 	r.Use(appMiddleware.RequestLogger(logger))
 	r.Use(mw.Recoverer)
 
@@ -82,7 +93,7 @@ func main() {
 		}
 	})
 
-	r.Mount("/", handler.Routes())
+	r.Mount("/", handler.Routes(appMiddleware.WebhookAuth(webhookToken)))
 
 	srv := &http.Server{
 		Addr:         ":" + port,
@@ -153,6 +164,16 @@ func main() {
 	}
 
 	logger.Info("server stopped")
+}
+
+func loadWebhookToken(configuredToken string, insecureTestOverride string) (string, error) {
+	if configuredToken != "" {
+		return configuredToken, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(insecureTestOverride), "true") {
+		return "", nil
+	}
+	return "", errors.New("WEBHOOK_AUTH_TOKEN is required; set ALLOW_INSECURE_TEST_WEBHOOKS=true only for an isolated local test")
 }
 
 func runMigrations(db *sql.DB, logger *slog.Logger) error {

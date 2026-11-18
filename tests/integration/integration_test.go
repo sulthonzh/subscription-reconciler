@@ -16,6 +16,7 @@ import (
 
 	"github.com/sulthonzh/subscription-reconciler/internal/adapter/httphandler"
 	"github.com/sulthonzh/subscription-reconciler/internal/adapter/sqlite"
+	appMiddleware "github.com/sulthonzh/subscription-reconciler/internal/middleware"
 	"github.com/sulthonzh/subscription-reconciler/internal/service"
 )
 
@@ -98,8 +99,20 @@ func setupIntegration(t *testing.T) (*httphandler.Handler, *sql.DB) {
 
 func newTestRouter(h *httphandler.Handler) *chi.Mux {
 	r := chi.NewRouter()
-	r.Mount("/", h.Routes())
+	r.Mount("/", h.Routes(appMiddleware.WebhookAuth("integration-secret")))
 	return r
+}
+
+func TestWebhookRoutesRequireAuthentication(t *testing.T) {
+	h, _ := setupIntegration(t)
+	router := newTestRouter(h)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/store", nil)
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 }
 
 func doRequest(t *testing.T, router *chi.Mux, method, path string, body interface{}) *http.Response {
@@ -115,6 +128,7 @@ func doRequest(t *testing.T, router *chi.Mux, method, path string, body interfac
 	req := httptest.NewRequest(method, path, reqBody)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Webhook-Token", "integration-secret")
 	}
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

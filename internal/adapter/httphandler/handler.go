@@ -18,11 +18,11 @@ func New(reconciler *service.Reconciler) *Handler {
 	return &Handler{reconciler: reconciler}
 }
 
-func (h *Handler) Routes() chi.Router {
+func (h *Handler) Routes(authenticateWebhook func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
 
-	r.Post("/webhooks/store", h.HandleStoreWebhook)
-	r.Post("/webhooks/marketplace/revoke", h.HandleMarketplaceRevoke)
+	r.With(authenticateWebhook).Post("/webhooks/store", h.HandleStoreWebhook)
+	r.With(authenticateWebhook).Post("/webhooks/marketplace/revoke", h.HandleMarketplaceRevoke)
 	r.Get("/users/{id}/entitlement", h.HandleGetEntitlement)
 	r.Get("/users/{id}/timeline", h.HandleGetTimeline)
 
