@@ -87,9 +87,11 @@ jobs:
       - name: Build mock carrier image
         run: docker build -f Dockerfile.mock -t mock-carrier:test .
       - name: Verify server starts healthy
+        env:
+          WEBHOOK_AUTH_TOKEN: ci-only-not-a-production-secret
         run: |
           COMPOSE="docker compose -p subscription-reconciler-ci-${{ github.run_id }} -f docker-compose.yml -f docker-compose.ci.yml"
-          WEBHOOK_AUTH_TOKEN=ci-only-not-a-production-secret $COMPOSE up --build -d
+          $COMPOSE up --build -d
           for i in $(seq 1 30); do
             if $COMPOSE exec -T reconciler wget -qO- http://localhost:8080/health > /dev/null 2>&1; then
               echo "Server healthy after ${i}s"
