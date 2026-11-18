@@ -1,0 +1,6 @@
+# CI avoids self-hosted-runner host-port collisions; services communicate on the compose network.
+services:
+  reconciler:
+    ports: !reset []
+  mock-carrier:
+    ports: !reset []

@@ -683,7 +683,8 @@ flowchart LR
 | **RequestID** | chi | Generates unique `X-Request-Id` header for request tracing |
 | **RateLimiter** | `middleware/` | Per-IP rate limiting (100 req/min). Uses `net.SplitHostPort` to extract IP from `RemoteAddr` |
 | **BodySizeLimit** | `middleware/` | Rejects requests with body > 1MB via `io.LimitReader` + `io.ReadAll` |
-| **CORS** | `middleware/` | Custom CORS — allows all origins, GET/POST/OPTIONS, Content-Type + Authorization headers |
+| **CORS** | `middleware/` | Exact-origin allowlist; empty allowlist emits no access-control origin. Allows GET/POST/OPTIONS and Content-Type, Authorization, and X-Webhook-Token headers |
+| **WebhookAuth** | `middleware/` | Constant-time shared-token check for mutating webhook routes; accepts `Authorization: Bearer` or `X-Webhook-Token` |
 | **RequestLogger** | `middleware/` | Structured request logging via slog (method, path, status, duration) |
 | **Recoverer** | chi | Catches panics, returns 500 with stack trace in logs |
 
@@ -696,6 +697,9 @@ All configuration via environment variables:
 | `PORT` | `8080` | HTTP server listen port |
 | `DB_PATH` | `entitlements.db` | SQLite database file path |
 | `CARRIER_URL` | `http://localhost:8081` | Carrier API base URL |
+| `WEBHOOK_AUTH_TOKEN` | **required** | Shared token for mutating webhook routes |
+| `CORS_ALLOWED_ORIGINS` | empty | Comma-separated exact origins permitted by CORS |
+| `ALLOW_INSECURE_TEST_WEBHOOKS` | `false` | Permits startup without a webhook token; routes remain fail-closed. Use only for isolated local/CI health checks |
 
 No config files required. Set env vars before starting the server or in `docker-compose.yml`.
 
@@ -704,6 +708,8 @@ No config files required. Set env vars before starting the server or in `docker-
 export PORT=9090
 export DB_PATH=/data/prod.db
 export CARRIER_URL=https://carrier.example.com
+export WEBHOOK_AUTH_TOKEN="$(openssl rand -hex 32)"
+export CORS_ALLOWED_ORIGINS=https://console.example.com
 ./subscription-reconciler
 ```
 

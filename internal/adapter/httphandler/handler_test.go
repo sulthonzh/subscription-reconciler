@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/sulthonzh/subscription-reconciler/internal/domain"
+	appMiddleware "github.com/sulthonzh/subscription-reconciler/internal/middleware"
 	"github.com/sulthonzh/subscription-reconciler/internal/service"
 )
 
@@ -392,11 +393,38 @@ func TestHandleGetEntitlement_NotFound(t *testing.T) {
 
 func TestRoutes_ReturnsRouter(t *testing.T) {
 	h, _, _ := setupHandler()
-	r := h.Routes()
+	r := h.Routes(appMiddleware.WebhookAuth("operator-secret"))
 	assert.NotNil(t, r)
 
 	routes := r.Routes()
 	assert.NotEmpty(t, routes, "Routes() should register at least one route")
+}
+
+func TestRoutes_RequiresWebhookAuthentication(t *testing.T) {
+	h, _, _ := setupHandler()
+
+	r := h.Routes(appMiddleware.WebhookAuth("operator-secret"))
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/store", nil)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRoutes_AcceptsConfiguredWebhookAuthentication(t *testing.T) {
+	h, _, _ := setupHandler()
+
+	r := h.Routes(appMiddleware.WebhookAuth("operator-secret"))
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/store", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Webhook-Token", "operator-secret")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestHandleStoreWebhook_UnknownProduct(t *testing.T) {
