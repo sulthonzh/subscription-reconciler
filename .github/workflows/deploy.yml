@@ -1,8 +1,0 @@
-name: deploy
-on:
-  push:
-    branches: [main, develop, staging]
-jobs:
-  deploy:
-    uses: sulthonzh/deploy-framework/.github/workflows/deploy.yml@v1
-    secrets: inherit
